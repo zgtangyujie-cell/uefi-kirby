@@ -23,6 +23,18 @@
     SECTION RAW = Binaries/kirby/RawFiles/uefiplat.cfg
   }
 !if $(USE_CUSTOM_DISPLAY_DRIVER) == 1
+  FILE FREEFORM = 6C1F3B2A-9D47-4E15-B8A0-3F5C71E9D248 {
+    SECTION UI = "Panel_kirby_nt36523_csot_dsc_vid.xml"
+    SECTION RAW = Binaries/kirby/RawFiles/Panel_kirby_nt36523_csot_dsc_vid.xml
+  }
+  FILE FREEFORM = 6C1F3B2B-9D47-4E15-B8A0-3F5C71E9D248 {
+    SECTION UI = "Panel_kirby_nt36523_boe_dsc_vid.xml"
+    SECTION RAW = Binaries/kirby/RawFiles/Panel_kirby_nt36523_boe_dsc_vid.xml
+  }
+  FILE FREEFORM = 6C1F3B2C-9D47-4E15-B8A0-3F5C71E9D248 {
+    SECTION UI = "Panel_kirby_nt36523_boe_dsc_hyper_vid.xml"
+    SECTION RAW = Binaries/kirby/RawFiles/Panel_kirby_nt36523_boe_dsc_hyper_vid.xml
+  }
   FILE FREEFORM = E0ABCA0D-64AD-49DF-B2B5-8C6CDB7741B2 {
     SECTION UI = "Panel_AA567_P_3_A0004_dsc_cmd.xml"
     SECTION RAW = Binaries/kirby/RawFiles/Panel_AA567_P_3_A0004_dsc_cmd.xml
