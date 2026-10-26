@@ -1,0 +1,48 @@
+/dts-v1/;
+
+/*
+ * 最小 UEFI 设备树（仅用于 ButtonsDxe）
+ *
+ * ButtonsDxe（厂商预编译）固定从这两条路径取按键配置：
+ *   /soc/buttons/buttons-config      属性 gpio-configs  （每条 8 个 u32）
+ *   /soc/buttons/platform-key-maps   属性 key-maps      （5 个 u32）
+ *
+ * 属性含义（取自 Qualcomm boot_images 的 button_defines.h）：
+ *   gpio-configs = <BTNType GpioType PmicIndex GpioNumber
+ *                   IsSourcePulls VoltageSource OutBufStrength Source>
+ *     BTNType        : VOL_UP_BTN = 0
+ *     GpioType       : PMIC_GPIO = 1
+ *     PmicIndex      : PMIC_B = 1
+ *     GpioNumber     : PM_GPIO_6 = 6      ← kirby 音量键就在 PMIC GPIO 6
+ *     IsSourcePulls  : BUTTON_GPIO_PULL_UP_30uA = 0
+ *     VoltageSource  : BUTTON_GPIO_VIN1 = 1
+ *     OutBufStrength : BUTTON_GPIO_OUT_DRV_STR_LOW = 0
+ *     Source         : BUTTON_GPIO_SRC_GND = 0
+ *   key-maps     = <PWR VOL_UP VOL_DOWN RESERVED RESERVED>
+ *     PWR = 1, VOL_UP = 2, VOL_DOWN = 3, RESERVED = 0
+ */
+
+/ {
+	model = "Lenovo Legion Y700 Gen3 (TB321FU)";
+	compatible = "qcom,lanai", "lenovo,kirby";
+	#address-cells = <0x02>;
+	#size-cells = <0x02>;
+
+	soc {
+		ranges;
+		#address-cells = <0x02>;
+		#size-cells = <0x02>;
+
+		buttons {
+			buttons-config {
+				compatible = "qcom,pm-button";
+				gpio-configs = <0x00 0x01 0x01 0x06 0x00 0x01 0x00 0x00>;
+			};
+
+			platform-key-maps {
+				compatible = "qcom,pm-keymap";
+				key-maps = <0x01 0x02 0x03 0x00 0x00>;
+			};
+		};
+	};
+};

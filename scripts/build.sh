@@ -35,7 +35,12 @@ git submodule update --init --recursive --depth 1
 log "installing the kirby device package"
 cp -r "$ROOT/Platforms/Lenovo/kirbyPkg" Platforms/Lenovo/
 cp    "$ROOT/Resources/Configs/kirby.toml" Resources/Configs/
+# 用我们自己的最小设备树覆盖 kirby.dtb（ButtonsDxe 需要 /soc/buttons 节点）
 cp    "$ROOT/Resources/DTBs/kirby.dtb"     Resources/DTBs/
+if [ -f "$ROOT/Resources/DTBs/kirby-buttons.dts" ]; then
+  dtc -I dts -O dtb -o Resources/DTBs/kirby.dtb "$ROOT/Resources/DTBs/kirby-buttons.dts"
+  log "compiled kirby-buttons.dts -> kirby.dtb ($(stat -c%s Resources/DTBs/kirby.dtb) bytes)"
+fi
 mkdir -p Binaries
 cp -r "$ROOT/Binaries/kirby" Binaries/
 
