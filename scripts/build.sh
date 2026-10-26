@@ -41,6 +41,9 @@ if [ -f "$ROOT/Resources/DTBs/kirby-buttons.dts" ]; then
   dtc -I dts -O dtb -o Resources/DTBs/kirby.dtb "$ROOT/Resources/DTBs/kirby-buttons.dts"
   log "compiled kirby-buttons.dts -> kirby.dtb ($(stat -c%s Resources/DTBs/kirby.dtb) bytes)"
 fi
+  mkdir -p Platforms/Lenovo/kirbyPkg/FdtBlob
+  cp Resources/DTBs/kirby.dtb Platforms/Lenovo/kirbyPkg/FdtBlob/lanai-lenovo-kirby.dtb
+  log "staged FdtBlob for FV embedding"
 mkdir -p Binaries
 cp -r "$ROOT/Binaries/kirby" Binaries/
 

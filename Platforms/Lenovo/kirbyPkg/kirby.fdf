@@ -101,11 +101,11 @@ READ_LOCK_STATUS   = TRUE
   INF QcomPkg/Drivers/IortDtDxe/IortDtDxe.inf
 
   # Device Tree
-  #INF EmbeddedPkg/Drivers/DtPlatformDxe/DtPlatformDxe.inf
-  #FILE FREEFORM = 25462CDA-221F-47DF-AC1D-259CFAA4E326 {
-  #  SECTION RAW = kirbyPkg/FdtBlob/lanai-lenovo-kirby.dtb
-  #  SECTION UI = "DeviceTreeBlob"
-  #}
+  INF EmbeddedPkg/Drivers/DtPlatformDxe/DtPlatformDxe.inf
+  FILE FREEFORM = 25462CDA-221F-47DF-AC1D-259CFAA4E326 {
+    SECTION RAW = kirbyPkg/FdtBlob/lanai-lenovo-kirby.dtb
+    SECTION UI = "DeviceTreeBlob"
+  }
 
   !include QcomPkg/Extra.fdf.inc
 
