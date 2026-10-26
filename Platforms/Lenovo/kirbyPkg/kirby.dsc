@@ -25,7 +25,7 @@
   BUILD_TARGETS                  = RELEASE|DEBUG
   SKUID_IDENTIFIER               = DEFAULT
   FLASH_DEFINITION               = kirbyPkg/kirby.fdf
-  USE_CUSTOM_DISPLAY_DRIVER      = 1
+  USE_CUSTOM_DISPLAY_DRIVER      = 0
 
   #
   # 0 = SM8650-AA
