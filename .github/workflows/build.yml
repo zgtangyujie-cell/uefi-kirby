@@ -6,6 +6,12 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      target:
+        description: 'Build target (DEBUG prints boot progress to the console)'
+        type: choice
+        options: [RELEASE, DEBUG]
+        default: RELEASE
 
 permissions:
   contents: write
@@ -31,13 +37,13 @@ jobs:
           mono --version | head -1
 
       - name: Build the boot image
-        run: bash ./scripts/build.sh "$RUNNER_TEMP/work" RELEASE
+        run: bash ./scripts/build.sh "$RUNNER_TEMP/work" "${{ github.event.inputs.target || 'RELEASE' }}"
 
       - name: Report
         run: |
           img=$(ls "$RUNNER_TEMP"/work/uefi/Mu-kirby-0.img)
           {
-            echo "### Mu-kirby-0.img"
+            echo "### Mu-kirby-0.img (${{ github.event.inputs.target || 'RELEASE' }})"
             echo '```'
             ls -l "$img"
             sha256sum "$img"
@@ -47,7 +53,7 @@ jobs:
       - name: Upload boot image
         uses: actions/upload-artifact@v4
         with:
-          name: Mu-kirby-RELEASE
+          name: Mu-kirby-${{ github.event.inputs.target || 'RELEASE' }}
           if-no-files-found: error
           path: |
             ${{ runner.temp }}/work/uefi/Mu-kirby-0.img
