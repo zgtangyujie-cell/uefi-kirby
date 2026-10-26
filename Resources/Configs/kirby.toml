@@ -24,7 +24,7 @@ size = 0x400000
 #
 [boot_image_kernel]
 kernel_compression = "gzip"
-append_dtb         = true
+append_dtb         = false   # 社区可用固件同样不追加（其 boot.img 尾部 0 字节）
 
 #
 # Android Boot Image Configs
