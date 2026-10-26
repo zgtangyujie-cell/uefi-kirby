@@ -1,0 +1,12 @@
+# Store everything byte-for-byte by default: this repository carries vendor
+# UEFI binaries and a device tree, and any text conversion would corrupt them.
+* -text
+
+# Files that must be LF so they run on the Linux CI runner.
+*.md    text eol=lf
+*.sh    text eol=lf
+*.py    text eol=lf
+*.yml   text eol=lf
+*.toml  text eol=lf
+*.diff  text eol=lf
+*.patch text eol=lf

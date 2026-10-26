@@ -1,0 +1,40 @@
+#
+# Device Status
+#
+[status]
+model_count = 1
+
+#
+# Boot Shim Configs
+#
+[boot_shim]
+requires_kernel_header = true
+
+#
+# UEFI FD Configs
+#
+[uefi_fd]
+base = 0xA7100000
+# 3 MB (0x300000) is exactly full for the RELEASE build, and a DEBUG build needs
+# room for the extra debug strings / assertions, so give the FD 4 MB.
+size = 0x400000
+
+#
+# Android Boot Image Kernel Configs
+#
+[boot_image_kernel]
+kernel_compression = "gzip"
+append_dtb         = true
+
+#
+# Android Boot Image Configs
+#
+# NOTE: the device now runs Android 16 (GKI boot image header v4).  With the
+# pre-OTA Android 15 firmware the ABL accepted this legacy v0 image; the newer
+# ABL rejects it ("Failed to load/authenticate boot image" and an instant reset
+# on the boot partition).  Match the reference giulia port and emit a v4 header.
+#
+[boot_image]
+header_version = 4
+os_version     = "16.0.0"
+os_patch_level = "2026-07"

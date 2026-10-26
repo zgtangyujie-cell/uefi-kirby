@@ -1,0 +1,16 @@
+diff --git a/BaseTools/Source/Python/build/BuildReport.py b/BaseTools/Source/Python/build/BuildReport.py
+index 884e641..5105f02 100644
+--- a/BaseTools/Source/Python/build/BuildReport.py
++++ b/BaseTools/Source/Python/build/BuildReport.py
+@@ -184,7 +184,10 @@ def ByteArrayForamt(Value):
+ # @IncludeFiles              The dictionary of current found include files.
+ #
+ def FindIncludeFiles(Source, IncludePathList, IncludeFiles):
+-    FileContents = open(Source).read()
++    # Decode as UTF-8 with replacement: source files may contain non-ASCII bytes
++    # in a legacy code page, which makes the default locale codec (e.g. gbk)
++    # raise UnicodeDecodeError and abort the whole build report.
++    FileContents = open(Source, "rb").read().decode("utf-8", "replace")
+     #
+     # Find header files with pattern #include "XXX.h" or #include <XXX.h>
+     #
