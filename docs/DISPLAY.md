@@ -37,6 +37,11 @@ qcom,mdss_dsi_kirby_nt36523_boe_dsc_hyper_vid
 
 > 实机 `ro.vendor.display.paneltype = 1`，屏幕 1600×2560、支持 30/60/90/120/144/165 Hz，与上表一致。
 
+**跨固件版本复核（2026-10-26）**：手头三份不同的平刷包
+（`TB321FU_ZUX_1.5.10.184`、`TB321FU_ZUI_16.1.10.027`、`E:\123pan\Downloads\images` 2026-01）
+里的 `dtbo` 全部包含同样三个 kirby 面板节点，参数逐字段一致（800×2560、120 Hz）。
+也就是说，**这份 XML 不依赖固件版本**，不必为每个 ZUI 版本重做。
+
 ## 3. 已经做了什么
 
 `tools/make_panel_xml.py`（在 `Y700/tools/`）把 DTBO 面板节点转成 oplus DisplayDxe 要的 XML 格式，
