@@ -101,11 +101,13 @@ READ_LOCK_STATUS   = TRUE
   INF QcomPkg/Drivers/IortDtDxe/IortDtDxe.inf
 
   # Device Tree
-  INF EmbeddedPkg/Drivers/DtPlatformDxe/DtPlatformDxe.inf
-  FILE FREEFORM = 25462CDA-221F-47DF-AC1D-259CFAA4E326 {
-    SECTION RAW = kirbyPkg/FdtBlob/lanai-lenovo-kirby.dtb
-    SECTION UI = "DeviceTreeBlob"
-  }
+  # DtPlatformDxe + FdtBlob 内嵌方式实测会让固件卡死在 logo（2026-10-26），
+  # 保持关闭。设备树改由 boot.img 尾部追加（append_dtb = true）。
+  #INF EmbeddedPkg/Drivers/DtPlatformDxe/DtPlatformDxe.inf
+  #FILE FREEFORM = 25462CDA-221F-47DF-AC1D-259CFAA4E326 {
+  #  SECTION RAW = kirbyPkg/FdtBlob/lanai-lenovo-kirby.dtb
+  #  SECTION UI = "DeviceTreeBlob"
+  #}
 
   !include QcomPkg/Extra.fdf.inc
 
