@@ -7,7 +7,7 @@
  *   - Reserved ranges come from the tablet's own reserved-memory node, read out
  *     of vendor_boot.img (pineapple v2 base DTB). Full dump:
  *     work/kirby-dtb/reserved-memory.txt
- *   - FD base 0xA7100000 / size 0x300000 is confirmed against the community
+ *   - FD base 0xF3800000 / size 0x300000 is confirmed against the community
  *     boot.img: gzip(BootShim + FV), FvLength 0x400000 at offset 112.
  *   - Addresses above 0xFFE00000 are deliberately NOT described: the device is
  *     a 16 GiB SKU but this map only covers the low 4 GiB window, which is all
@@ -18,7 +18,7 @@
  *   1. UEFI_Log moved out of 0x81CE4000 — that address sits inside kirby's
  *      aop_tme_uefi_merged_region (0x81C80000-0x81CF4000). Writing the UEFI log
  *      there would corrupt AOP state. It now lives at the tail of our own
- *      reserved block (0xA7FF0000).
+ *      reserved block (0xF46F0000).
  *   2. Low-memory reservations split to match kirby exactly: xbl_aop_merged,
  *      aop_cmd_db + aop_tme + chipinfo, adsp_mhi, global_sync + tz_stat, qdss.
  *   3. Reserved regions that caihong's table left undescribed (they were simply
@@ -53,25 +53,25 @@ gMemoryDescriptor[] = {
   {"MPSS_DSM",            0x86B00000, 0x05100000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
   {"PIL_Reserved",        0x8BC00000, 0x17580000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},  // mpss + adsp + cdsp + camera/video/cvp + ramoops
   {"DBI_Dump",            0xA6100000, 0x00F00000, NoHob,  MMAP_IO, INITIALIZED, Conv,   UNCACHED_UNBUFFERED_XN},
-  {"FD_Reserved",         0xA7000000, 0x00100000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
-  {"UEFI_FD",             0xA7100000, 0x00300000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
-  {"UEFI_FD_Reserved",    0xA7400000, 0x00200000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
-  {"Info_Blk",            0xA7601000, 0x00001000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
-  {"MMU_PageTables",      0xA7602000, 0x00003000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"Log_Buffer",          0xA7605000, 0x00008000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
-  {"UEFI_Stack",          0xA760D000, 0x00040000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"SEC_Heap",            0xA764D000, 0x0008C000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"Sched_Heap",          0xA76D9000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"FV_Region",           0xA7AD9000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"UEFI_RESV",           0xA7ED9000, 0x00117000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"UEFI_Log",            0xA7FF0000, 0x00010000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},  // moved: was 0x81CE4000 (inside AOP TME)
+  {"FD_Reserved",         0xF3700000, 0x00100000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
+  {"UEFI_FD",             0xF3800000, 0x00300000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
+  {"UEFI_FD_Reserved",    0xF3B00000, 0x00200000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
+  {"Info_Blk",            0xF3D01000, 0x00001000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
+  {"MMU_PageTables",      0xF3D02000, 0x00003000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"Log_Buffer",          0xF3D05000, 0x00008000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
+  {"UEFI_Stack",          0xF3D0D000, 0x00040000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"SEC_Heap",            0xF3D4D000, 0x0008C000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"Sched_Heap",          0xF3DD9000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"FV_Region",           0xF41D9000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"UEFI_RESV",           0xF45D9000, 0x00117000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"UEFI_Log",            0xF46F0000, 0x00010000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},  // moved: was 0x81CE4000 (inside AOP TME)
   {"Kernel",              0xA8000000, 0x10000000, AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},
   {"DXE_Heap",            0xB8000000, 0x1BA00000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
   {"HWFENCE",             0xD4E23000, 0x002DD000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_THROUGH_XN},
   {"Display_Reserved",    0xD5100000, 0x02B00000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_THROUGH_XN},
   {"TZ_MERGED",           0xD8000000, 0x00800000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
-  {"TZApps_Reserved",     0xD8800000, 0x1B000000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
-  {"TRUST_UI_VM",         0xF3800000, 0x04400000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
+  {"TZApps_Reserved",     0xD8800000, 0x1AF00000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
+  {"TRUST_UI_VM",         0xF4700000, 0x03500000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
   {"OEM_VM",              0xF7C00000, 0x04C00000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
   {"LLCC_LPI",            0xFF800000, 0x00600000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
 
