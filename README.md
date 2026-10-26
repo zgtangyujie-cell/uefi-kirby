@@ -11,7 +11,9 @@
 | 设备仓库结构 | ✅ 已搭好（`Platforms/Lenovo/kirbyPkg`、`Binaries/kirby`、`Resources`） |
 | 板级 DTB | ✅ 已就位（`Resources/DTBs/kirby.dtb`，1259 节点，来自社区 Linux 移植，model = `Lenovo Legion Y700 (2025) / TB321FU`） |
 | FD 基址 / 尺寸 | ✅ `0xA7100000` / `0x400000`（已用社区固件实测反推，与 caihong 同值） |
-| 厂商 DXE 驱动 | ⚠️ 暂用 SM8650 通用集（源自 Device-Binaries），`DisplayDxe.efi` 内仍带 caihong 面板绑定 |
+| 厂商 DXE 驱动 | ⚠️ 暂用 SM8650 通用集（源自 Device-Binaries，实为 OnePlus/OPPO 构建） |
+| 面板 XML | ✅ 已从 dtbo 生成 kirby 三变体（CSOT / BOE / BOE-hyper），见 [docs/DISPLAY.md](docs/DISPLAY.md) |
+| **显示能否点亮** | ❓ **未验证，且有结构性风险**：驱动按编译期内置面板名匹配，kirby 不在列表里 |
 | **MemoryMapLib** | ✅ 已按 kirby 实机保留区重写（33 条 DDR 项；37 个 DTB 保留区零冲突，见下） |
 | CI 构建 | ❌ 未跑过 |
 | 真机验证 | ❌ **没有任何 kirby 实机记录，不要当成能用的固件** |
