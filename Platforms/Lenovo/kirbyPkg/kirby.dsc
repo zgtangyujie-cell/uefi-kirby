@@ -62,8 +62,8 @@
   #
   # Simple Frame Buffer
   #
-  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferWidth|2560
-  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferHeight|1600
+  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferWidth|1600
+  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferHeight|2560
   gSiliciumPkgTokenSpaceGuid.PcdFrameBufferColorDepth|32
 
   #
