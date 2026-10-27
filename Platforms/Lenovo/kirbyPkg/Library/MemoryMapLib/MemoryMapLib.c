@@ -1,4 +1,5 @@
 #include <Library/MemoryMapLib.h>
+#include <Library/DebugLib.h>
 
 /*
  * Memory map for the Lenovo Legion Y700 Gen 3 (TB321FU / "kirby", SM8650).
