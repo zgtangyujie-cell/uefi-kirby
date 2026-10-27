@@ -1,0 +1,29 @@
+## @file
+#  SmemProbeDxe
+#
+#  Diagnostic only: dumps the first words of the SMEM region to the framebuffer
+#  console, so the boot log answers whether the ABL ever built SMEM on this
+#  boot path.  See SmemProbeDxe.c for why this cannot be done from Linux.
+#
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = SmemProbeDxe
+  FILE_GUID                      = BE67FBD6-328D-4A0B-AA6D-7394EE957267
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = SmemProbeEntry
+
+[Sources]
+  SmemProbeDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  DebugLib
+  UefiDriverEntryPoint
+
+[Depex]
+  TRUE

@@ -1,6 +1,10 @@
 APRIORI DXE {
   INF MdeModulePkg/Core/Dxe/DxeMain.inf
   INF MdeModulePkg/Universal/PCD/Dxe/Pcd.inf
+
+  # 探针：读 0x81D00000 前 32 字节，判断 SMEM 是否真的没被建。放在 PcdDxe 之后、
+  # 其它一切之前，越早越能反映 ABL 交接时的原始状态。
+  INF kirbyPkg/Drivers/SmemProbeDxe/SmemProbeDxe.inf
   INF QcomPkg/Drivers/IortDtDxe/IortDtDxe.inf
 
   # EnvDxeEnhanced 已移除。它的入口点在这台机器上返回 EFI_NOT_FOUND（找不到 env

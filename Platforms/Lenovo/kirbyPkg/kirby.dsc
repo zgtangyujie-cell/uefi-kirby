@@ -102,6 +102,13 @@
 
 [Components]
   #
+  # Bring-up diagnostics
+  #
+  # 读 0x81D00000 的前几个字打到屏幕上，用来判断 SMEM 到底有没有被 ABL 建起来。
+  # 见 Drivers/SmemProbeDxe/SmemProbeDxe.c 里的说明。
+  kirbyPkg/Drivers/SmemProbeDxe/SmemProbeDxe.inf
+
+  #
   # ACPI Tables
   #
   #kirby/AcpiTables.inf
