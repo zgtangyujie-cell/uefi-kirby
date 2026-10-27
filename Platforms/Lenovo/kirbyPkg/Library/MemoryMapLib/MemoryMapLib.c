@@ -7,8 +7,14 @@
  *   - Reserved ranges come from the tablet's own reserved-memory node, read out
  *     of vendor_boot.img (pineapple v2 base DTB). Full dump:
  *     work/kirby-dtb/reserved-memory.txt
- *   - FD base 0xF3800000 / size 0x300000 is confirmed against the community
+ *   - FD base 0xF3800000 / size 0x400000 is confirmed against the community
  *     boot.img: gzip(BootShim + FV), FvLength 0x400000 at offset 112.
+ *   - The UEFI self-use block (Info_Blk .. UEFI_RESV) is 0xA7601000-0xA7FF0000,
+ *     cross-checked three ways on 2026-10-27: the stock uefi_a.img contains the
+ *     literal pair {0xA760D000, 0x40000} and no 0xF3D0D000 anywhere; kirby.dsc
+ *     sets PcdCPUCoresStackBase to 0xA760D000; and every other SM8650 port in
+ *     refs/ uses the same block. An earlier revision of this table placed it at
+ *     0xF3D0xxxx, which is not backed by any address the platform provides.
  *   - Addresses above 0xFFE00000 are deliberately NOT described: the device is
  *     a 16 GiB SKU but this map only covers the low 4 GiB window, which is all
  *     the UEFI phase and the XNU handoff region need. Extending it needs a
@@ -53,17 +59,27 @@ gMemoryDescriptor[] = {
   {"MPSS_DSM",            0x86B00000, 0x05100000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
   {"PIL_Reserved",        0x8BC00000, 0x17580000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},  // mpss + adsp + cdsp + camera/video/cvp + ramoops
   {"DBI_Dump",            0xA6100000, 0x00F00000, NoHob,  MMAP_IO, INITIALIZED, Conv,   UNCACHED_UNBUFFERED_XN},
+  // The FD is 0x400000 (kirby.toml [uefi_fd] size) and BootShim copies all of
+  // it here, so the whole 4 MB must be mapped executable -- covering only
+  // 0x300000 leaves the top megabyte of the image unmapped.
   {"FD_Reserved",         0xF3700000, 0x00100000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
-  {"UEFI_FD",             0xF3800000, 0x00300000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
-  {"UEFI_FD_Reserved",    0xF3B00000, 0x00200000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
-  {"Info_Blk",            0xF3D01000, 0x00001000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
-  {"MMU_PageTables",      0xF3D02000, 0x00003000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"Log_Buffer",          0xF3D05000, 0x00008000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
-  {"UEFI_Stack",          0xF3D0D000, 0x00040000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"SEC_Heap",            0xF3D4D000, 0x0008C000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"Sched_Heap",          0xF3DD9000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"FV_Region",           0xF41D9000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
-  {"UEFI_RESV",           0xF45D9000, 0x00117000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"UEFI_FD",             0xF3800000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
+  {"UEFI_FD_Reserved",    0xF3C00000, 0x00100000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK},
+  // UEFI self-use block. These MUST match PcdCPUCoresStackBase (kirby.dsc) and
+  // the ABL-provided UEFI window; see the derivation note above. Getting the
+  // stack address wrong here is fatal, not cosmetic: SecEntry sets SP to the
+  // PCD value, ArmConfigureMmu builds the page tables from this table, and any
+  // address missing from it faults on the first stack push after the MMU is
+  // enabled -- which kills the firmware with no output at all, because the
+  // exception handler needs the same unmapped stack to print.
+  {"Info_Blk",            0xA7601000, 0x00001000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
+  {"MMU_PageTables",      0xA7602000, 0x00003000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"Log_Buffer",          0xA7605000, 0x00008000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
+  {"UEFI_Stack",          0xA760D000, 0x00040000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"SEC_Heap",            0xA764D000, 0x0008C000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"Sched_Heap",          0xA76D9000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"FV_Region",           0xA7AD9000, 0x00400000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
+  {"UEFI_RESV",           0xA7ED9000, 0x00117000, AddMem, SYS_MEM, SYS_MEM_CAP, BsData, WRITE_BACK_XN},
   {"UEFI_Log",            0xF46F0000, 0x00010000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},  // moved: was 0x81CE4000 (inside AOP TME)
   {"Kernel",              0xA8000000, 0x10000000, AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},
   {"DXE_Heap",            0xB8000000, 0x1BA00000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
@@ -85,7 +101,7 @@ gMemoryDescriptor[] = {
   {"QUP",                 0x00800000, 0x00300000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},  // GENI SE: SPI@0xA90000 (touch) lives here
   {"PRNG_CFG_PRNG",       0x010C0000, 0x0000C000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"CRYPTO0_CRYPTO",      0x01DC0000, 0x00040000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
-  {"UFS",                 0x01D80000, 0x00060000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},  // PHY 0x1D80000 + HC 0x1D84000
+  {"UFS",                 0x01D80000, 0x00040000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},  // PHY 0x1D80000 + HC 0x1D84000; stops before CRYPTO0 at 0x1DC0000
   {"CLK_TCSR_TCSR_REGS",  0x01F00000, 0x00100000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"PERIPH_SS",           0x08800000, 0x00100000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"USB",                 0x0A600000, 0x00200000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
