@@ -10,15 +10,15 @@
  *   - FD base 0xF3800000 / size 0x400000 is confirmed against the community
  *     boot.img: gzip(BootShim + FV), FvLength 0x400000 at offset 112.
  *   - The UEFI self-use block (Info_Blk .. UEFI_RESV) is 0xA7601000-0xA7FF0000,
- *     cross-checked three ways on 2026-10-27: the stock uefi_a.img contains the
- *     literal pair {0xA760D000, 0x40000} and no 0xF3D0D000 anywhere; kirby.dsc
- *     sets PcdCPUCoresStackBase to 0xA760D000; and every other SM8650 port in
- *     refs/ uses the same block. An earlier revision of this table placed it at
- *     0xF3D0xxxx, which is not backed by any address the platform provides.
- *   - Addresses above 0xFFE00000 are deliberately NOT described: the device is
- *     a 16 GiB SKU but this map only covers the low 4 GiB window, which is all
- *     the UEFI phase and the XNU handoff region need. Extending it needs a
- *     verified high-memory layout from a live FDT, not a guess.
+ *     cross-checked three ways: the stock uefi_a.img contains the literal pair
+ *     {0xA760D000, 0x40000} and no 0xF3D0D000 anywhere; kirby.dsc sets
+ *     PcdCPUCoresStackBase to 0xA760D000; and every other SM8650 port in refs/
+ *     uses the same block. An earlier revision placed it at 0xF3D0xxxx, which no
+ *     address on this platform backs.
+ *   - Addresses above 0xFFE00000 are deliberately NOT described: this map only
+ *     covers the low 4 GiB window, which is all the UEFI phase and the XNU
+ *     handoff region need. Extending it needs a verified high-memory layout from
+ *     a live FDT, not a guess.
  *
  * Differences from the caihong table this was derived from, all intentional:
  *   1. UEFI_Log moved out of 0x81CE4000 — that address sits inside kirby's
@@ -29,8 +29,7 @@
  *      aop_cmd_db + aop_tme + chipinfo, adsp_mhi, global_sync + tz_stat, qdss.
  *   3. Reserved regions that caihong's table left undescribed (they were simply
  *      absent from its map) are now explicit: mpss_dsm, tz_merged,
- *      trust_ui_vm, oem_vm, llcc_lpi. Undescribed memory is never used, so this
- *      is documentation plus defence in depth rather than a behaviour fix.
+ *      trust_ui_vm, oem_vm, llcc_lpi.
  *   4. UFS MMIO (0x01D80000) added; caihong's map predates storage work and
  *      left the controller unmapped.
  *
@@ -39,6 +38,12 @@
  *   - The XNU handoff window below is inherited as a 256 MiB reservation; the
  *     payload placement must be checked against the real live FDT before the
  *     first kernel bring-up, not just the menu phase.
+ *   - 0x08900000-0x0A600000 contains no entry. A driver does fault at
+ *     0x09800000. Note that kirby's own device trees describe nothing there,
+ *     so guessing a name and size for it (an earlier revision tried "NPU" from
+ *     another board's tree) does not help. The map is dumped to the screen at
+ *     MMU setup now, so the next crash can be matched against what is actually
+ *     mapped instead of inferred.
  */
 STATIC
 EFI_MEMORY_REGION_DESCRIPTOR
@@ -104,12 +109,6 @@ gMemoryDescriptor[] = {
   {"UFS",                 0x01D80000, 0x00040000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},  // PHY 0x1D80000 + HC 0x1D84000; stops before CRYPTO0 at 0x1DC0000
   {"CLK_TCSR_TCSR_REGS",  0x01F00000, 0x00100000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"PERIPH_SS",           0x08800000, 0x00100000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
-  // NPU's PIL register window. This was missing, and the resulting hole ran
-  // from the end of PERIPH_SS (0x08900000) all the way to USB, so any driver
-  // touching an NPU register took a translation fault at 0x09800000. The
-  // address and size come from the platform device tree (qcom,npu@9800000,
-  // reg = <0x9800000 0x800000>).
-  {"NPU",                 0x09800000, 0x00800000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"USB",                 0x0A600000, 0x00200000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"AOSS",                0x0B000000, 0x04000000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},  // MDSS/DSI 0xAE00000, DSI0 0xAE94000, DSI1 0xAE96000
   {"TLMM",                0x0F000000, 0x01000000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},  // touch reset GPIO 161 / irq GPIO 162
