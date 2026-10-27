@@ -81,7 +81,10 @@
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ICBDxe/ICBDxe.inf
   # SmemDxe 同 APRIORI.inc：移出固件卷，避免 BDS 阶段被重新加载后撞同一个 ASSERT。
-  # INF Binaries/kirby/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
+  # 【探测】单变量实验：走 boot_a 正常启动流程后，SMEM 是否已被 ABL 初始化。
+  # 若这次不再报 "SMEM is not initialized by Boot."，说明换启动路径就是解，
+  # 整条 Qualcomm 栈都可以加回来；若仍报错，则 SMEM 与启动路径无关。
+  INF Binaries/kirby/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
 
   INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
 
