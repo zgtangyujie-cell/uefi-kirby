@@ -104,6 +104,12 @@ gMemoryDescriptor[] = {
   {"UFS",                 0x01D80000, 0x00040000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},  // PHY 0x1D80000 + HC 0x1D84000; stops before CRYPTO0 at 0x1DC0000
   {"CLK_TCSR_TCSR_REGS",  0x01F00000, 0x00100000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"PERIPH_SS",           0x08800000, 0x00100000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
+  // NPU's PIL register window. This was missing, and the resulting hole ran
+  // from the end of PERIPH_SS (0x08900000) all the way to USB, so any driver
+  // touching an NPU register took a translation fault at 0x09800000. The
+  // address and size come from the platform device tree (qcom,npu@9800000,
+  // reg = <0x9800000 0x800000>).
+  {"NPU",                 0x09800000, 0x00800000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"USB",                 0x0A600000, 0x00200000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},
   {"AOSS",                0x0B000000, 0x04000000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},  // MDSS/DSI 0xAE00000, DSI0 0xAE94000, DSI1 0xAE96000
   {"TLMM",                0x0F000000, 0x01000000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE},  // touch reset GPIO 161 / irq GPIO 162
