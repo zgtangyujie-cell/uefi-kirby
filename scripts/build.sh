@@ -67,64 +67,10 @@ KC=Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/KeyCallback.c
 sed -i 's/\(mEnterBootManager[[:space:]]*=[[:space:]]*\)FALSE/\1TRUE/' "$KC"
 grep -n "mEnterBootManager.*=" "$KC" | head -3
 
-# 把 MemoryMapLib 实际生效的整张表打到屏幕上。崩溃时 adb/fastboot 都没了、
-# pstore 是空的、异常 dump 只有寄存器和栈，拿不到页表；把表本身打出来，
-# 就能拿 FAR 直接对照，不必再猜。
-#
-# 打印放在 MemoryInitPei.c 而不是 MemoryMapLib 自己里面：MemoryMapLib 一旦
-# 依赖 DebugLib，就会和 SerialPortLib 形成环 ——
-#   MemoryMapLib -> DebugLib -> FrameBufferSerialPortLib
-#                -> MemoryMapHelperLib -> GetMemoryMap (MemoryMapLib)
-# MemoryInitPei 本来就依赖 DebugLib，并且已经拿到了 GetMemoryMap 的返回值，
-# 从那里打不会引入任何新依赖。
-log "patching MemoryInitPei: dump the memory map before the MMU is configured"
-python3 - <<'PY'
-import pathlib
-
-# cwd is $WORK/uefi -- the Mu-Silicium checkout, not this repo.
-src = pathlib.Path("Silicon/Silicium/SiliciumPkg/Library/MemoryInitPeiLib/MemoryInitPei.c")
-s = src.read_text()
-
-needle = "  GetMemoryMap (&MemoryDescriptor, &MemoryDescriptorCount);"
-assert needle in s, "GetMemoryMap call not found in MemoryInitPei.c"
-
-dump = """
-#ifndef MDEPKG_NDEBUG
-  // Dump the map that is about to become the page tables, so a later crash can
-  // be matched against what was actually mapped instead of guessed at.
-  //
-  // This block keeps its own counter and its own scope on purpose. The function
-  // already has `Index`, initialised to 0 at declaration and incremented by the
-  // memory-table loop below without ever being reset -- reusing it here left
-  // the table empty and ArmConfigureMmu ran on all-zero descriptors, which hung
-  // the firmware silently right after this point.
-  {
-    UINT8  DumpIndex;
-
-    DEBUG ((EFI_D_WARN, "\\nMemoryMap: %u regions\\n", (UINT32)MemoryDescriptorCount));
-    for (DumpIndex = 0; DumpIndex < MemoryDescriptorCount; DumpIndex++) {
-      DEBUG ((
-        EFI_D_WARN,
-        "  %2u %a 0x%08lx + 0x%08lx%a\\n",
-        (UINT32)DumpIndex,
-        MemoryDescriptor[DumpIndex].Name,
-        (UINT64)MemoryDescriptor[DumpIndex].Address,
-        (UINT64)MemoryDescriptor[DumpIndex].Length,
-        (MemoryDescriptor[DumpIndex].HobOption == AddDev) ? "  [dev]" : ""
-        ));
-    }
-    DEBUG ((EFI_D_WARN, "\\n"));
-  }
-#endif
-"""
-
-if "MemoryMap: %u regions" not in s:
-    s = s.replace(needle, needle + "\n" + dump, 1)
-    src.write_text(s)
-
-ok = "MemoryMap: %u regions" in src.read_text()
-print("MemoryInitPei: map dump injected =", ok)
-PY
+# 内存表打印已撤掉。它把整张 49 行表打到屏幕上，正好占满一屏，把之后异常转储
+# 的开头——PC、符号回溯 [0]/[1]、X0..X14——全挤出了屏幕顶部（满屏时
+# AdvanceNewLine 会 ZeroMem 清屏重画），崩溃现场最关键的那几行反而拍不到。
+log "skipping the MemoryInitPei map dump (removed: it scrolled the fault dump off screen)"
 
 # build_uefi.py takes a pagesize argument and must not treat 0 as "unset".
 if ! git apply --reverse --check "$ROOT/patches/uefi-parent.diff" 2>/dev/null; then
