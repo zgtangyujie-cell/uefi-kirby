@@ -71,6 +71,24 @@
   #
   gQcomPkgTokenSpaceGuid.PcdPlatformType|"LA"
 
+  #
+  # Debug policy
+  #
+  # PcdDebugPropertyMask = 0x02 keeps DEBUG() text but turns ASSERT() into a
+  # no-op.  The default (0x2F, matching caihong) enables
+  # DEBUG_PROPERTY_ASSERT_DEADLOOP_ENABLED, and AutoGen.c ends every driver
+  # entry point with ASSERT_EFI_ERROR (Status).  On real hardware it is entirely
+  # normal for an optional driver to return EFI_NOT_FOUND -- EnvDxeEnhanced does
+  # exactly that on this board -- and the dead loop then stops the boot at a
+  # driver that DxeCore would otherwise have unloaded and moved past.
+  #
+  # PcdDebugPrintErrorLevel keeps ERROR|WARN|LOAD only.  The default level makes
+  # DxeCore print one "Memory Allocation" line per pool allocation, which filled
+  # 60 of the 71 rows on screen and pushed the interesting part off the bottom.
+  #
+  gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x02
+  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000006
+
 [LibraryClasses]
   #
   # Memory Libraries
