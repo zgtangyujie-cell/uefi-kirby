@@ -151,10 +151,12 @@
   # INF Binaries/kirby/QcomPkg/Drivers/DDRInfoDxe/DDRInfoDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.inf
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/XhciDxe/XhciDxe.inf
+  # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
+  # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
+  INF Binaries/kirby/QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.inf
+  # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
+  # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
+  INF Binaries/kirby/QcomPkg/Drivers/XhciDxe/XhciDxe.inf
 
   INF MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
   INF MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
@@ -162,10 +164,12 @@
 
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
+  # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
+  # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
+  INF Binaries/kirby/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf
+  # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
+  # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
+  INF Binaries/kirby/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/UsbInitDxe/UsbInitDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
