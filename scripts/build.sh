@@ -72,15 +72,47 @@ grep -n "mEnterBootManager.*=" "$KC" | head -3
 # 正常的（kirby 上是 EnvDxeEnhanced），DxeCore 本来会卸载它继续走 —— 但
 # ASSERT 会先进 CpuDeadLoop，整个固件就钉死在一个不该管的驱动上。
 #
-# 0x2F = ASSERT(0x01) | PRINT(0x02) | CODE(0x04) | CLEAR_MEM(0x08) | DEADLOOP(0x20)
-# 0x02 = 只留 DEBUG 打印。
+# 为什么不去调 PCD：试过三轮，全部无效。
+#   - kirby.dsc 的 [PcdsFixedAtBuild] 段给 PcdDebugPropertyMask 赋 0x02  —— 无效
+#   - SiliciumPkg.dsc.inc:69（同样在 [PcdsFixedAtBuild] 段）改成 0x02   —— 无效
+#   - MdePkg.dec 的默认值是 0（不是常见的 0x0f），改它也无从谈起
+# PcdDebugPropertyMask 在 MdePkg.dec 里声明为 [PcdsFixedAtBuild,PcdsPatchableInModule]
+# 双类型，而 DebugLib 到底解析哪一份，在看不到 CI 日志的情况下无法确认。
 #
-# 必须在 SiliciumPkg.dsc.inc 里改，不能在 kirbyPkg 的 dsc 里改：
-# PcdDebugPropertyMask 在 MdePkg.dec 里同时声明为 PcdsFixedAtBuild 和
-# PcdsPatchableInModule，而 DebugLib 取的是 PatchableInModule 那份。只在
-# kirby.dsc 的 [PcdsFixedAtBuild] 段赋值，DebugLib 仍然读到默认的 0x0f，bit0=1，
-# ASSERT 照样触发（实测两轮都死在同一行）。
-log "patching SiliciumPkg.dsc.inc: turn ASSERT into a no-op"
+# 所以改成直接动函数：ASSERT 宏的第一句就是 if (DebugAssertEnabled())，
+# 让它恒返回 FALSE，则无论 PCD 读到什么值，ASSERT 都进不去，
+# 而 DEBUG() 走的是另一个函数 DebugPrintEnabled()，调试输出完全不受影响。
+log "patching BaseDebugLibSerialPort: DebugAssertEnabled() -> FALSE"
+DBC=Mu_Basecore/MdePkg/Library/BaseDebugLibSerialPort/DebugLib.c
+python3 - "$DBC" <<'PYEOF'
+import re
+import sys
+import pathlib
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+
+# 容忍空白差异：mu_basecore 的 submodule 指向的具体 commit 未必与 release 分支
+# HEAD 逐字相同，写死缩进容易在几周后失效。
+pattern = re.compile(
+    r"return\s*\(\s*BOOLEAN\s*\)\s*\(\s*\(\s*PcdGet8\s*\(\s*PcdDebugPropertyMask\s*\)"
+    r"\s*&\s*DEBUG_PROPERTY_DEBUG_ASSERT_ENABLED\s*\)\s*!=\s*0\s*\)\s*;"
+)
+hits = pattern.findall(text)
+if len(hits) != 1:
+    print(f"DebugAssertEnabled body matched {len(hits)} times, expected 1", file=sys.stderr)
+    sys.exit(1)
+
+replacement = "return FALSE; /* kirby: ASSERT no-op for bring-up, see scripts/build.sh */"
+text = pattern.sub(lambda _m: replacement, text, count=1)
+path.write_text(text, encoding="utf-8")
+print("patched DebugAssertEnabled")
+PYEOF
+grep -n -A3 "DebugAssertEnabled (" "$DBC" | head -8
+
+# dsc 里的两处 0x02 保留：不改行为，但让两种 PCD 类型的取值一致，
+# 将来若换成真实的 Release 构建不必再回头找。
+log "patching SiliciumPkg.dsc.inc: keep PcdDebugPropertyMask consistent at 0x02"
 SCD=Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc
 sed -i 's/PcdDebugPropertyMask|0x2F/PcdDebugPropertyMask|0x02/' "$SCD"
 grep -n "PcdDebugPropertyMask|" "$SCD"
