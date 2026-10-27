@@ -41,20 +41,19 @@ PATCHES = [
         (0x22B84, "fd7bbfa9fd030091", "e0031f2ac0035fd6",
          "dead-battery check -> return EFI_SUCCESS"),
     ]),
-    ("QcomPkg/Drivers/UFSDxe/UFSDxe", [
-        # Was a Sleep->Wakeup call swap at 0xA468, copied from giulia and never
-        # run on kirby, because the firmware used to die in SEC before DXE. The
-        # first time it actually executed, UFSDxe took a data abort (translation
-        # fault) on 0x98000000 -- inside mpss_region, which the device tree
-        # marks no-map. That patch also overwrote the cbnz that checked the call
-        # result, so a failure fell through instead of retrying.
-        #
-        # Until the real cause is known, stub the entry the same way VcsDxe and
-        # RscDxe are stubbed: DXE dispatch finishes instead of aborting. The
-        # menu phase does not need the disk; UFS gets fixed separately.
-        (0x1000, "1f0000f1c0050054", "000080d2c0035fd6",
-         "entry stub mov x0,#0;ret - UFSDxe aborts on 0x98000000 before BDS"),
-    ]),
+    # UFSDxe is deliberately absent from this list.
+    #
+    # It used to carry a Sleep->Wakeup swap at 0xA468, copied from giulia and
+    # never actually run on kirby. Inspecting what it produced:
+    #   before: bl Sleep ; cbnz w0, retry
+    #   after:  mov w1,#1 ; bl Wakeup
+    # it changes the callee, changes the argument, and overwrites the cbnz that
+    # tested the result, so a failing call falls through instead of retrying.
+    #
+    # It was never the real fault either. UFSDxe aborts on FAR 0x09800000, the
+    # NPU PIL register window, which MemoryMapLib simply did not map. That is
+    # fixed in the map, so UFSDxe stays stock and can bring UFS up.
+
     ("QcomPkg/Drivers/ButtonsDxe/ButtonsDxe", [
         (0x3E70, "4820", "a801", "power key -> ENTER"),
         (0x3E74, "d6", "ed", "power key -> ENTER (paired)"),
