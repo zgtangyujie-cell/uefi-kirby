@@ -1,7 +1,10 @@
   INF MdeModulePkg/Core/Dxe/DxeMain.inf
   INF MdeModulePkg/Universal/PCD/Dxe/Pcd.inf
 
-  INF Binaries/kirby/QcomPkg/Drivers/EnvDxe/EnvDxeEnhanced.inf
+  # EnvDxeEnhanced 也移出固件卷，不只是移出 APRIORI：如果只从调度表里删掉，
+  # DxeCore 仍会在 BDS 阶段按依赖关系把它加载起来，然后一样撞 ASSERT。
+  # 它在 UEFI 阶段只负责把 Android env 分区参数转交 OS，菜单与 XNU 交接都用不到。
+  # INF Binaries/kirby/QcomPkg/Drivers/EnvDxe/EnvDxeEnhanced.inf
 
   INF MdeModulePkg/Universal/ReportStatusCodeRouter/RuntimeDxe/ReportStatusCodeRouterRuntimeDxe.inf
   INF MdeModulePkg/Universal/StatusCodeHandler/RuntimeDxe/StatusCodeHandlerRuntimeDxe.inf

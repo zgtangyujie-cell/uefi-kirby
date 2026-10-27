@@ -3,7 +3,14 @@ APRIORI DXE {
   INF MdeModulePkg/Universal/PCD/Dxe/Pcd.inf
   INF QcomPkg/Drivers/IortDtDxe/IortDtDxe.inf
 
-  INF Binaries/kirby/QcomPkg/Drivers/EnvDxe/EnvDxeEnhanced.inf
+  # EnvDxeEnhanced 已移除。它的入口点在这台机器上返回 EFI_NOT_FOUND（找不到 env
+  # 分区），而 AutoGen.c 会在入口点末尾 ASSERT_EFI_ERROR(Status)，DEBUG 构建里
+  # 直接 CpuDeadLoop —— 整个固件钉死在这里，后面的驱动一个都加载不到。
+  #
+  # 试过四轮改 PcdDebugPropertyMask / DebugAssertEnabled / ASSERT 宏，全部无效
+  # （见 scripts/build.sh 的注释）。这个驱动在 UEFI 阶段也没有用处：它只是把
+  # Android 的 env 分区参数转交给操作系统，BDS 菜单和 XNU 交接都不需要它。
+  # INF Binaries/kirby/QcomPkg/Drivers/EnvDxe/EnvDxeEnhanced.inf
 
   INF MdeModulePkg/Universal/ReportStatusCodeRouter/RuntimeDxe/ReportStatusCodeRouterRuntimeDxe.inf
   INF MdeModulePkg/Universal/StatusCodeHandler/RuntimeDxe/StatusCodeHandlerRuntimeDxe.inf
