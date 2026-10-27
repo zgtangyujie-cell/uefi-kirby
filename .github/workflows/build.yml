@@ -76,6 +76,34 @@ jobs:
             ${{ runner.temp }}/work/uefi/Build/BUILDLOG_kirbyPkg.txt
           retention-days: 30
 
+      # Actions artifacts need a GitHub login even on a public repository, so
+      # they cannot be fetched from a plain URL. Publish the image to a
+      # dedicated single-commit branch instead: raw.githubusercontent.com serves
+      # it anonymously, which makes each build directly downloadable and keeps
+      # the repo from growing (the branch is force-pushed, so only one blob set
+      # ever exists on it).
+      - name: Publish image to artifacts branch
+        run: |
+          set -eu
+          PUB="$RUNNER_TEMP/pub"
+          mkdir -p "$PUB"
+          cp "$RUNNER_TEMP/work/uefi/Mu-kirby-0.img" "$PUB/Mu-kirby-${{ steps.t.outputs.target }}.img"
+          cp "$RUNNER_TEMP/work/uefi/Build/kirbyPkg/${{ steps.t.outputs.target }}_CLANGPDB/FV/SILICIUM_UEFI.fd" \
+             "$PUB/SILICIUM_UEFI-${{ steps.t.outputs.target }}.fd"
+          printf '%s  %s\n' "$(sha256sum "$PUB/Mu-kirby-${{ steps.t.outputs.target }}.img" | cut -d' ' -f1)" \
+             "Mu-kirby-${{ steps.t.outputs.target }}.img" > "$PUB/SHA256SUMS"
+          printf 'commit %s\ntarget %s\n' "${{ github.sha }}" "${{ steps.t.outputs.target }}" > "$PUB/BUILD-INFO.txt"
+
+          cd "$PUB"
+          git init -q
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b artifacts
+          git add -A
+          git commit -q -m "build ${{ github.sha }} (${{ steps.t.outputs.target }})"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" artifacts
+          echo "published to the artifacts branch"
+
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
