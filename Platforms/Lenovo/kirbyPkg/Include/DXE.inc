@@ -40,12 +40,10 @@
   INF FatPkg/EnhancedFatDxe/Fat.inf
   INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
 
-  # UFSDxe is left out of the image entirely for this experiment, not just out
-  # of APRIORI. Keeping it in the FV would change nothing measurable: DxeCore
-  # dispatches every driver it finds, so the module would still load and still
-  # run, just later. Taking it out is the only way to answer whether it is the
-  # thing touching 0x09800000.
-  # INF Binaries/kirby/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
+  # UFSDxe is back. It was left out of the image for one round as a
+  # single-variable test; the fault at 0x09800000 did not move, so this driver
+  # is not the module touching that address and there is no reason to drop it.
+  INF Binaries/kirby/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
   INF Binaries/kirby/QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
   INF Binaries/kirby/QcomPkg/Drivers/PwrUtilsDxe/PwrUtilsDxe.inf
   INF Binaries/kirby/QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
