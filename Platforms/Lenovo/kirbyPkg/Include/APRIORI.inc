@@ -72,13 +72,11 @@ APRIORI DXE {
   # INF Binaries/kirby/QcomPkg/Drivers/TLMMDxe/TLMMDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/I2CDxe/I2CDxe.inf
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/SPMIDxe/SPMIDxe.inf
+  INF Binaries/kirby/QcomPkg/Drivers/SPMIDxe/SPMIDxe.inf
 
   INF MdeModulePkg/Universal/ResetSystemRuntimeDxe/ResetSystemRuntimeDxe.inf
 
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/PmicDxe/PmicDxeLa.inf
+  INF Binaries/kirby/QcomPkg/Drivers/PmicDxe/PmicDxeLa.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
@@ -151,8 +149,7 @@ APRIORI DXE {
   # INF Binaries/kirby/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
+  INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/TsensDxe/TsensDxe.inf
 

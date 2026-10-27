@@ -42,8 +42,7 @@
   # INF Binaries/kirby/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/TLMMDxe/TLMMDxe.inf
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/PmicDxe/PmicDxeLa.inf
+  INF Binaries/kirby/QcomPkg/Drivers/PmicDxe/PmicDxeLa.inf
 
   INF MdeModulePkg/Universal/DevicePathDxe/DevicePathDxe.inf
 
@@ -74,8 +73,7 @@
   # INF Binaries/kirby/QcomPkg/Drivers/VcsDxe/VcsDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/SPMIDxe/SPMIDxe.inf
+  INF Binaries/kirby/QcomPkg/Drivers/SPMIDxe/SPMIDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ICBDxe/ICBDxe.inf
   # SmemDxe 同 APRIORI.inc：移出固件卷，避免 BDS 阶段被重新加载后撞同一个 ASSERT。
@@ -117,8 +115,7 @@
   INF SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
 !endif
 
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
+  INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ChargerExDxe/ChargerExDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
