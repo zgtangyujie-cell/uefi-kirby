@@ -5,7 +5,7 @@
 #
 # The workdir is created if missing and reused on later runs. Everything the
 # board adds lives in this repository; the Mu-Silicium checkout stays untouched
-# apart from the copied-in files and the two build patches.
+# apart from the copied-in files and the build patches.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -66,6 +66,56 @@ log "patching BootManagerLib: enter menu without a key press"
 KC=Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/KeyCallback.c
 sed -i 's/\(mEnterBootManager[[:space:]]*=[[:space:]]*\)FALSE/\1TRUE/' "$KC"
 grep -n "mEnterBootManager.*=" "$KC" | head -3
+
+# 把 MemoryMapLib 实际生效的整张表打到屏幕上。崩溃时 adb/fastboot 都没了、
+# pstore 是空的、异常 dump 只有寄存器和栈，拿不到页表；把表本身打出来，
+# 就能拿 FAR 直接对照，不必再猜。
+#
+# 打印放在 MemoryInitPei.c 而不是 MemoryMapLib 自己里面：MemoryMapLib 一旦
+# 依赖 DebugLib，就会和 SerialPortLib 形成环 ——
+#   MemoryMapLib -> DebugLib -> FrameBufferSerialPortLib
+#                -> MemoryMapHelperLib -> GetMemoryMap (MemoryMapLib)
+# MemoryInitPei 本来就依赖 DebugLib，并且已经拿到了 GetMemoryMap 的返回值，
+# 从那里打不会引入任何新依赖。
+log "patching MemoryInitPei: dump the memory map before the MMU is configured"
+python3 - <<'PY'
+import pathlib
+
+# cwd is $WORK/uefi -- the Mu-Silicium checkout, not this repo.
+src = pathlib.Path("Silicon/Silicium/SiliciumPkg/Library/MemoryInitPeiLib/MemoryInitPei.c")
+s = src.read_text()
+
+needle = "  GetMemoryMap (&MemoryDescriptor, &MemoryDescriptorCount);"
+assert needle in s, "GetMemoryMap call not found in MemoryInitPei.c"
+
+dump = """
+#ifndef MDEPKG_NDEBUG
+  // Dump the map that is about to become the page tables. A later crash can
+  // then be matched against what was actually mapped instead of guessed at.
+  DEBUG ((EFI_D_WARN, "\\nMemoryMap: %u regions\\n", (UINT32)MemoryDescriptorCount));
+  for (Index = 0; Index < MemoryDescriptorCount; Index++) {
+    DEBUG ((
+      EFI_D_WARN,
+      "  %2u %a 0x%08lx + 0x%08lx%a\\n",
+      (UINT32)Index,
+      MemoryDescriptor[Index].Name,
+      (UINT64)MemoryDescriptor[Index].Address,
+      (UINT64)MemoryDescriptor[Index].Length,
+      (MemoryDescriptor[Index].HobOption == AddDev) ? "  [dev]" : ""
+      ));
+  }
+  DEBUG ((EFI_D_WARN, "\\n"));
+#endif
+"""
+
+if "MemoryMap: %u regions" not in s:
+    s = s.replace(needle, needle + "\n" + dump, 1)
+    src.write_text(s)
+
+ok = "MemoryMap: %u regions" in src.read_text()
+print("MemoryInitPei: map dump injected =", ok)
+PY
+
 # build_uefi.py takes a pagesize argument and must not treat 0 as "unset".
 if ! git apply --reverse --check "$ROOT/patches/uefi-parent.diff" 2>/dev/null; then
   git apply "$ROOT/patches/uefi-parent.diff"
