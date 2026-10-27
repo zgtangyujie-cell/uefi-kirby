@@ -45,14 +45,10 @@ APRIORI DXE {
   INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
 
   INF Binaries/kirby/QcomPkg/Drivers/SdccDxe/SdccDxe.inf
-  # UFSDxe is temporarily NOT in this early list. The crash report names this
-  # module, and removing it from APRIORI is the cleanest single-variable test
-  # available: if the fault at 0x09800000 disappears, UFSDxe really is the
-  # caller and the fix belongs in the map or in that driver. If the same fault
-  # still happens, then something else touches that address and UFSDxe was only
-  # the module that happened to be executing.
-  # It is still in DXE.inc, so the image still contains it.
-  # INF Binaries/kirby/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
+  # UFSDxe is back. It was removed from the image for one round as a
+  # single-variable test and the fault at 0x09800000 did not move, so this
+  # driver is not what touches that address.
+  INF Binaries/kirby/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
 
   INF FatPkg/EnhancedFatDxe/Fat.inf
 
