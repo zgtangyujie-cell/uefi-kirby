@@ -127,6 +127,14 @@ gMemoryDescriptor[] = {
   {"APSS_HM",             0x17000000, 0x02000000, AddDev, MMAP_IO, UNCACHEABLE, MmIO,   NS_DEVICE}   // GIC 0x17100000, timer 0x17420000
 };
 
+//
+// SMEM probe state.  Declared at file scope rather than inside the function:
+// this library is instantiated in both PEI and DXE, and block-scope statics are
+// easy to trip over under EDK2's strict warning set.
+//
+STATIC BOOLEAN          gSmemProbed = FALSE;
+STATIC volatile UINT32  *gSmemBase   = (volatile UINT32 *)(UINTN)0x81D00000;
+
 VOID
 GetMemoryMap (
   OUT EFI_MEMORY_REGION_DESCRIPTOR **MemoryDescriptor,
@@ -147,29 +155,22 @@ GetMemoryMap (
   // the MMU is on, so this reads the physical region directly.  EFI_D_ERROR is
   // used so the line survives any debug level filtering.
   //
-  {
-    STATIC BOOLEAN  Probed = FALSE;
-
-    if (!Probed) {
-      STATIC volatile UINT32 *Smem = (volatile UINT32 *)(UINTN)0x81D00000;
-
-      Probed = TRUE;
-
-      DEBUG ((
-        EFI_D_ERROR,
-        "SMEM probe: %08x %08x %08x %08x\n",
-        Smem[0],
-        Smem[1],
-        Smem[2],
-        Smem[3]
-        ));
-      DEBUG ((
-        EFI_D_ERROR,
-        "SMEM magic=%08x expected=534d454d -> %a\n",
-        Smem[0],
-        (Smem[0] == 0x534D454D) ? "VALID" : "EMPTY-OR-WRONG"
-        ));
-    }
+  if (!gSmemProbed) {
+    gSmemProbed = TRUE;
+    DEBUG ((
+      EFI_D_ERROR,
+      "SMEM probe: %08x %08x %08x %08x\n",
+      gSmemBase[0],
+      gSmemBase[1],
+      gSmemBase[2],
+      gSmemBase[3]
+      ));
+    DEBUG ((
+      EFI_D_ERROR,
+      "SMEM magic=%08x expected=534d454d -> %a\n",
+      gSmemBase[0],
+      (gSmemBase[0] == 0x534D454D) ? "VALID" : "EMPTY-OR-WRONG"
+      ));
   }
 
   // Pass Data

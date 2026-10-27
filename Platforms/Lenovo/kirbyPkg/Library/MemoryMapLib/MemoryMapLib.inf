@@ -13,3 +13,11 @@
   ArmPkg/ArmPkg.dec
   MdePkg/MdePkg.dec
   SiliciumPkg/SiliciumPkg.dec
+
+[LibraryClasses]
+  #
+  # Only needed by the one-shot SMEM probe in GetMemoryMap().  Without this the
+  # DEBUG() call fails to link ("undefined reference to DebugPrint") and the
+  # whole firmware build stops at "Build the boot image".
+  #
+  DebugLib
