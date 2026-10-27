@@ -70,45 +70,75 @@ grep -n "mEnterBootManager.*=" "$KC" | head -3
 # 关掉 ASSERT 的死循环。AutoGen.c 在每个驱动入口点末尾都有
 # ASSERT_EFI_ERROR (Status)，而"可选设备不存在"让驱动返回 EFI_NOT_FOUND 是完全
 # 正常的（kirby 上是 EnvDxeEnhanced），DxeCore 本来会卸载它继续走 —— 但
-# ASSERT 会先进 CpuDeadLoop，整个固件就钉死在一个不该管的驱动上。
+# ASSERT 会先进死循环，整个固件就钉死在一个不该管的驱动上。
 #
-# 为什么不去调 PCD：试过三轮，全部无效。
-#   - kirby.dsc 的 [PcdsFixedAtBuild] 段给 PcdDebugPropertyMask 赋 0x02  —— 无效
-#   - SiliciumPkg.dsc.inc:69（同样在 [PcdsFixedAtBuild] 段）改成 0x02   —— 无效
-#   - MdePkg.dec 的默认值是 0（不是常见的 0x0f），改它也无从谈起
-# PcdDebugPropertyMask 在 MdePkg.dec 里声明为 [PcdsFixedAtBuild,PcdsPatchableInModule]
-# 双类型，而 DebugLib 到底解析哪一份，在看不到 CI 日志的情况下无法确认。
+# 前四轮为什么都没成功（记录下来，别再来第五次）：
+#   1. kirby.dsc [PcdsFixedAtBuild] PcdDebugPropertyMask=0x02       无效
+#   2. kirby.dsc 再加 PcdDebugPrintErrorLevel 降级                    只治了刷屏
+#   3. SiliciumPkg.dsc.inc:69 0x2F->0x02（同在 FixedAtBuild 段）      无效
+#   4. BaseDebugLibSerialPort 的 DebugAssertEnabled() 改成 return FALSE 无效
 #
-# 所以改成直接动函数：ASSERT 宏的第一句就是 if (DebugAssertEnabled())，
-# 让它恒返回 FALSE，则无论 PCD 读到什么值，ASSERT 都进不去，
-# 而 DEBUG() 走的是另一个函数 DebugPrintEnabled()，调试输出完全不受影响。
-log "patching BaseDebugLibSerialPort: DebugAssertEnabled() -> FALSE"
+# 第 4 轮无效这件事本身就是证据：ASSERT 宏的第一句就是 if (DebugAssertEnabled())，
+# 只要它返回 FALSE，屏幕上根本不该出现 "ASSERT [AutoGen.c:648]" 这一行。
+# 这行还在，说明改的那个函数不是编译进固件的那一份 —— 于是不再猜了。
+#
+# 死循环的真正位置在 DebugAssert() 内部：PcdDebugPropertyMask 的 0x20 位
+# (ASSERT_DEADLOOP_ENABLED) 会让它调 CpuDeadLoop()，而 0x2F 正好带着这一位。
+# 与其继续追这个 PCD 到底解析成哪一份，直接把 ASSERT 宏本身抹平：
+# 编译期展开成空，任何模块、任何 PCD 取值都绕不过去。
+#
+# 保留 if (FALSE) { (VOID)(Expression); } 的形状是为了不触发 unused 警告，
+# 和 EDK2 自己在 MDEPKG_NDEBUG 分支里的写法一致。ASSERT_EFI_ERROR 里包着的
+# DEBUG((DEBUG_ERROR, "ASSERT_EFI_ERROR (Status = %r)")) 不受影响，仍然会打印，
+# 所以"哪个驱动失败了"这条信息一点不少。
+log "patching DebugLib: ASSERT becomes a no-op, DEBUG() untouched"
 DBC=Mu_Basecore/MdePkg/Library/BaseDebugLibSerialPort/DebugLib.c
-python3 - "$DBC" <<'PYEOF'
+DLH=Mu_Basecore/MdePkg/Include/Library/DebugLib.h
+python3 - "$DBC" "$DLH" <<'PYEOF'
 import re
 import sys
 import pathlib
 
-path = pathlib.Path(sys.argv[1])
-text = path.read_text(encoding="utf-8")
+dbc = pathlib.Path(sys.argv[1])
+dlh = pathlib.Path(sys.argv[2])
 
-# 容忍空白差异：mu_basecore 的 submodule 指向的具体 commit 未必与 release 分支
-# HEAD 逐字相同，写死缩进容易在几周后失效。
-pattern = re.compile(
+# --- 1. DebugAssertEnabled() -> FALSE -------------------------------------
+text = dbc.read_text(encoding="utf-8")
+gate = re.compile(
     r"return\s*\(\s*BOOLEAN\s*\)\s*\(\s*\(\s*PcdGet8\s*\(\s*PcdDebugPropertyMask\s*\)"
     r"\s*&\s*DEBUG_PROPERTY_DEBUG_ASSERT_ENABLED\s*\)\s*!=\s*0\s*\)\s*;"
 )
-hits = pattern.findall(text)
+hits = gate.findall(text)
 if len(hits) != 1:
     print(f"DebugAssertEnabled body matched {len(hits)} times, expected 1", file=sys.stderr)
     sys.exit(1)
+text = gate.sub(
+    "return FALSE; /* kirby: ASSERT no-op for bring-up, see scripts/build.sh */",
+    text,
+    count=1,
+)
+dbc.write_text(text, encoding="utf-8")
 
-replacement = "return FALSE; /* kirby: ASSERT no-op for bring-up, see scripts/build.sh */"
-text = pattern.sub(lambda _m: replacement, text, count=1)
-path.write_text(text, encoding="utf-8")
-print("patched DebugAssertEnabled")
+# --- 2. ASSERT(Expression) macro -> empty ---------------------------------
+text = dlh.read_text(encoding="utf-8")
+macro = re.compile(
+    r"#define\s+ASSERT\s*\(\s*Expression\s*\)\s*\\[ \t]*\r?\n"
+    r"(?:[^\n]*\\[ \t]*\r?\n)*"
+    r"[^\n]*while\s*\(\s*FALSE\s*\)"
+)
+hits = macro.findall(text)
+if len(hits) < 1:
+    print("ASSERT(Expression) macro not found", file=sys.stderr)
+    sys.exit(1)
+text = macro.sub(
+    "#define ASSERT(Expression)  do { if (FALSE) { (VOID)(Expression); } } while (FALSE)",
+    text,
+)
+dlh.write_text(text, encoding="utf-8")
+print(f"patched: DebugAssertEnabled + {len(hits)} ASSERT macro block(s)")
 PYEOF
-grep -n -A3 "DebugAssertEnabled (" "$DBC" | head -8
+grep -n -A3 "DebugAssertEnabled (" "$DBC" | head -6
+grep -n "define ASSERT(Expression)" "$DLH"
 
 # dsc 里的两处 0x02 保留：不改行为，但让两种 PCD 类型的取值一致，
 # 将来若换成真实的 Release 构建不必再回头找。
