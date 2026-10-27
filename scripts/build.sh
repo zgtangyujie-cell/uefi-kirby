@@ -147,6 +147,46 @@ SCD=Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc
 sed -i 's/PcdDebugPropertyMask|0x2F/PcdDebugPropertyMask|0x02/' "$SCD"
 grep -n "PcdDebugPropertyMask|" "$SCD"
 
+# BDS 菜单在 1600x2560 上小到看不清。GraphicsConsoleDxe 用固定 8x19 点阵、不做
+# 任何缩放，于是 1600 像素宽折成 200 列字符，屏幕上就是个指甲盖大的方框。
+#
+# 关键点：GraphicsConsole 算列数用 HorizontalResolution，画行偏移用
+# PixelsPerScanLine —— 这两个字段允许不一致。所以让 GOP 报一半的可见区
+# (800x1280)、stride 仍用真实宽度 1600，就能得到两倍大小的字符，而且不会斜切
+# （斜切正是「分辨率与 stride 不匹配」的典型症状，这里刻意避开）。
+#
+# FrameBufferSize 保持 Width*Height*4 不变，buffer 仍是整块 1600x2560。
+# FrameBufferSerialPortLib 直接写 framebuffer、不走 GOP，所以早期文本输出
+# 不受影响，还是铺满全屏。
+log "patching SimpleFb.c: halve the GOP visible area so the menu is readable"
+SFB=Silicon/Silicium/SiliciumPkg/Drivers/SimpleFbDxe/SimpleFb.c
+python3 - "$SFB" <<'PYEOF'
+import re
+import sys
+import pathlib
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+
+pattern = re.compile(
+    r"(mFrameBuffer\.Mode->Info->HorizontalResolution\s*=\s*)Width(\s*;)"
+    r"(\s*\n\s*mFrameBuffer\.Mode->Info->VerticalResolution\s*=\s*)Height(\s*;)"
+)
+hits = pattern.findall(text)
+if len(hits) != 1:
+    print(f"GOP resolution assignment matched {len(hits)} times, expected 1", file=sys.stderr)
+    sys.exit(1)
+
+text = pattern.sub(
+    r"\1Width  / 2\2\3Height / 2\4",
+    text,
+    count=1,
+)
+path.write_text(text, encoding="utf-8")
+print("patched GOP resolution: visible area halved, PixelsPerScanLine untouched")
+PYEOF
+grep -n -B1 -A2 "HorizontalResolution = Width" "$SFB"
+
 # 内存表打印已撤掉。它把整张 49 行表打到屏幕上，正好占满一屏，把之后异常转储
 # 的开头——PC、符号回溯 [0]/[1]、X0..X14——全挤出了屏幕顶部（满屏时
 # AdvanceNewLine 会 ZeroMem 清屏重画），崩溃现场最关键的那几行反而拍不到。
