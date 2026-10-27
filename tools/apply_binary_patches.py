@@ -42,8 +42,18 @@ PATCHES = [
          "dead-battery check -> return EFI_SUCCESS"),
     ]),
     ("QcomPkg/Drivers/UFSDxe/UFSDxe", [
-        (0xA468, "4505009480fdff35", "210080528f050094",
-         "UFS Sleep call -> Wakeup call"),
+        # Was a Sleep->Wakeup call swap at 0xA468, copied from giulia and never
+        # run on kirby, because the firmware used to die in SEC before DXE. The
+        # first time it actually executed, UFSDxe took a data abort (translation
+        # fault) on 0x98000000 -- inside mpss_region, which the device tree
+        # marks no-map. That patch also overwrote the cbnz that checked the call
+        # result, so a failure fell through instead of retrying.
+        #
+        # Until the real cause is known, stub the entry the same way VcsDxe and
+        # RscDxe are stubbed: DXE dispatch finishes instead of aborting. The
+        # menu phase does not need the disk; UFS gets fixed separately.
+        (0x1000, "1f0000f1c0050054", "000080d2c0035fd6",
+         "entry stub mov x0,#0;ret - UFSDxe aborts on 0x98000000 before BDS"),
     ]),
     ("QcomPkg/Drivers/ButtonsDxe/ButtonsDxe", [
         (0x3E70, "4820", "a801", "power key -> ENTER"),
