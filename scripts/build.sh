@@ -90,21 +90,31 @@ assert needle in s, "GetMemoryMap call not found in MemoryInitPei.c"
 
 dump = """
 #ifndef MDEPKG_NDEBUG
-  // Dump the map that is about to become the page tables. A later crash can
-  // then be matched against what was actually mapped instead of guessed at.
-  DEBUG ((EFI_D_WARN, "\\nMemoryMap: %u regions\\n", (UINT32)MemoryDescriptorCount));
-  for (Index = 0; Index < MemoryDescriptorCount; Index++) {
-    DEBUG ((
-      EFI_D_WARN,
-      "  %2u %a 0x%08lx + 0x%08lx%a\\n",
-      (UINT32)Index,
-      MemoryDescriptor[Index].Name,
-      (UINT64)MemoryDescriptor[Index].Address,
-      (UINT64)MemoryDescriptor[Index].Length,
-      (MemoryDescriptor[Index].HobOption == AddDev) ? "  [dev]" : ""
-      ));
+  // Dump the map that is about to become the page tables, so a later crash can
+  // be matched against what was actually mapped instead of guessed at.
+  //
+  // This block keeps its own counter and its own scope on purpose. The function
+  // already has `Index`, initialised to 0 at declaration and incremented by the
+  // memory-table loop below without ever being reset -- reusing it here left
+  // the table empty and ArmConfigureMmu ran on all-zero descriptors, which hung
+  // the firmware silently right after this point.
+  {
+    UINT8  DumpIndex;
+
+    DEBUG ((EFI_D_WARN, "\\nMemoryMap: %u regions\\n", (UINT32)MemoryDescriptorCount));
+    for (DumpIndex = 0; DumpIndex < MemoryDescriptorCount; DumpIndex++) {
+      DEBUG ((
+        EFI_D_WARN,
+        "  %2u %a 0x%08lx + 0x%08lx%a\\n",
+        (UINT32)DumpIndex,
+        MemoryDescriptor[DumpIndex].Name,
+        (UINT64)MemoryDescriptor[DumpIndex].Address,
+        (UINT64)MemoryDescriptor[DumpIndex].Length,
+        (MemoryDescriptor[DumpIndex].HobOption == AddDev) ? "  [dev]" : ""
+        ));
+    }
+    DEBUG ((EFI_D_WARN, "\\n"));
   }
-  DEBUG ((EFI_D_WARN, "\\n"));
 #endif
 """
 
