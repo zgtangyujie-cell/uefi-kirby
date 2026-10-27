@@ -42,7 +42,9 @@
   # INF Binaries/kirby/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/TLMMDxe/TLMMDxe.inf
-  INF Binaries/kirby/QcomPkg/Drivers/PmicDxe/PmicDxeLa.inf
+  # 退回：SPMI 需要 SPMI 控制器时钟，而时钟来自 ClockDxe -> RpmhDxe -> SMEM。
+  # SMEM 未修好之前这条链是死的，加载它只会让启动停在 SPMI 而不是进菜单。
+  # INF Binaries/kirby/QcomPkg/Drivers/PmicDxe/PmicDxeLa.inf
 
   INF MdeModulePkg/Universal/DevicePathDxe/DevicePathDxe.inf
 
@@ -73,7 +75,9 @@
   # INF Binaries/kirby/QcomPkg/Drivers/VcsDxe/VcsDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
-  INF Binaries/kirby/QcomPkg/Drivers/SPMIDxe/SPMIDxe.inf
+  # 退回：SPMI 需要 SPMI 控制器时钟，而时钟来自 ClockDxe -> RpmhDxe -> SMEM。
+  # SMEM 未修好之前这条链是死的，加载它只会让启动停在 SPMI 而不是进菜单。
+  # INF Binaries/kirby/QcomPkg/Drivers/SPMIDxe/SPMIDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ICBDxe/ICBDxe.inf
   # SmemDxe 同 APRIORI.inc：移出固件卷，避免 BDS 阶段被重新加载后撞同一个 ASSERT。
@@ -115,7 +119,9 @@
   INF SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
 !endif
 
-  INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
+  # 退回：SPMI 需要 SPMI 控制器时钟，而时钟来自 ClockDxe -> RpmhDxe -> SMEM。
+  # SMEM 未修好之前这条链是死的，加载它只会让启动停在 SPMI 而不是进菜单。
+  # INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ChargerExDxe/ChargerExDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
