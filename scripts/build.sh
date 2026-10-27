@@ -58,6 +58,14 @@ fi
 "$WORK/.venv/bin/pip" install --quiet -r pip-requirements.txt
 
 log "applying the build patches"
+
+# 让 BDS 菜单无条件进入：KeyCallback 里 mEnterBootManager 初值改为 TRUE。
+# 原逻辑只有检测到按键设备（gKeypadDeviceProtocolGuid）上的 SCAN_UP 才进菜单，
+# 而我们的按键驱动因缺少 /soc/buttons 设备树节点起不来，永远等不到这个键。
+log "patching BootManagerLib: enter menu without a key press"
+KC=Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/KeyCallback.c
+sed -i 's/\(mEnterBootManager[[:space:]]*=[[:space:]]*\)FALSE/\1TRUE/' "$KC"
+grep -n "mEnterBootManager.*=" "$KC" | head -3
 # build_uefi.py takes a pagesize argument and must not treat 0 as "unset".
 if ! git apply --reverse --check "$ROOT/patches/uefi-parent.diff" 2>/dev/null; then
   git apply "$ROOT/patches/uefi-parent.diff"
