@@ -20,7 +20,18 @@ APRIORI DXE {
   INF EmbeddedPkg/MetronomeDxe/MetronomeDxe.inf
   INF ArmPkg/Drivers/TimerDxe/TimerDxe.inf
 
-  INF Binaries/kirby/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
+  # SmemDxe 暂时移出。它在这台机器上返回 EFI_NOT_FOUND，理由是
+  # "SMEM is not initialized by Boot." —— 也就是 0x81D00000 那块内容无效。
+  # 地址和缓存属性都已核对过：ABL 的 DTS 里 memory@81D00000 标着
+  # mem-label = "SMEM"、reg = <0x00 0x81d00000 0x00 0x200000>、
+  # cache-attributes = [0x25]，与 AOP / UEFI_Log 相同，我们表里写的也一致。
+  # 所以不是我们映射错了，是那块内存本身没有有效的 SMEM header。
+  #
+  # 它后面挂着一整串 depex 依赖它的驱动（IPCCDxe / Smp2pDxe / NpaDxe / RpmhDxe
+  # / ClockDxe ...）。移掉它之后这些驱动的 depex 永远不满足，DxeCore 会安静地
+  # 跳过它们，不会 NOT_FOUND、不会 ASSERT，启动可以一路走到 BDS。
+  # 这是为了先把菜单逼出来；SMEM 本身的问题之后单独修。
+  # INF Binaries/kirby/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
   INF Binaries/kirby/QcomPkg/Drivers/DALSYSDxe/DALSYSDxe.inf
   INF Binaries/kirby/QcomPkg/Drivers/HWIODxe/HWIODxe.inf
   INF Binaries/kirby/QcomPkg/Drivers/ChipInfoDxe/ChipInfoDxe.inf

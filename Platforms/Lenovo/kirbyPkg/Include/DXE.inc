@@ -56,7 +56,8 @@
   INF Binaries/kirby/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
   INF Binaries/kirby/QcomPkg/Drivers/SPMIDxe/SPMIDxe.inf
   INF Binaries/kirby/QcomPkg/Drivers/ICBDxe/ICBDxe.inf
-  INF Binaries/kirby/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
+  # SmemDxe 同 APRIORI.inc：移出固件卷，避免 BDS 阶段被重新加载后撞同一个 ASSERT。
+  # INF Binaries/kirby/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
 
   INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
 
