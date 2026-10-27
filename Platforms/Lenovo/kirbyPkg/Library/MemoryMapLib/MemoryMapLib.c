@@ -38,12 +38,13 @@
  *   - The XNU handoff window below is inherited as a 256 MiB reservation; the
  *     payload placement must be checked against the real live FDT before the
  *     first kernel bring-up, not just the menu phase.
- *   - 0x08900000-0x0A600000 contains no entry. A driver does fault at
- *     0x09800000. Note that kirby's own device trees describe nothing there,
- *     so guessing a name and size for it (an earlier revision tried "NPU" from
- *     another board's tree) does not help. The map is dumped to the screen at
- *     MMU setup now, so the next crash can be matched against what is actually
- *     mapped instead of inferred.
+ *   - 0x08900000-0x0A600000 contains no entry. An earlier revision chased the
+ *     fault at 0x09800000 as a missing mapping here and tried to name it "NPU"
+ *     from another board's tree -- both wrong. The address was never referenced
+ *     by any driver: IortDtDxe scanned an uninitialised
+ *     EFI_MEMORY_REGION_DESCRIPTOR because no "XBL_DT"/"XBL DT"/"DT BLOB" region
+ *     existed, and 0x09800000 was simply what the stack held. With XBL_DT listed
+ *     below, that walk starts from a real, mapped blob instead.
  */
 STATIC
 EFI_MEMORY_REGION_DESCRIPTOR
@@ -53,7 +54,17 @@ gMemoryDescriptor[] = {
   // DDR Regions — low memory, mirrors kirby reserved-memory
   {"HYP",                 0x80000000, 0x01200000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},  // gunyah_hyp 14M + cpusys_vm 4M
   {"RSRV0",               0x816E0000, 0x00320000, AddMem, SYS_MEM, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},
-  {"XBL_AOP",             0x81A00000, 0x00260000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},           // xbl_aop_merged -> 0x81C60000
+  // XBL_DT MUST be its own named entry, and it must come first: the ABL drops
+  // the boot image's device tree at 0x81A00000 and keeps the low 256 KiB for
+  // it, which is why every other SM8650 port in refs/ lists exactly this pair.
+  // IortDtDxe finds that blob by *name* ("DT BLOB" / "XBL DT" / "XBL_DT"); with
+  // none of the three present it scans an uninitialised
+  // EFI_MEMORY_REGION_DESCRIPTOR and dereferences whatever the stack happened to
+  // hold -- that is the wild 0x09800000, not a missing mapping. The stock
+  // uefi_a.img carries the literal {0x81A00000, 0x40000} at file offset 0x3a108,
+  // so neither the address nor the size here is a guess.
+  {"XBL_DT",              0x81A00000, 0x00040000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},
+  {"XBL_AOP",             0x81A40000, 0x00220000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},           // xbl_aop_merged, DT carved off the front -> 0x81C60000
   {"AOP",                 0x81C60000, 0x00095000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},  // cmd_db + tme + chipinfo -> 0x81CF5000
   {"SMEM",                0x81D00000, 0x00200000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
   {"ADSP_MHI",            0x81F00000, 0x00020000, AddMem, MEM_RES, UNCACHEABLE, Reserv, UNCACHED_UNBUFFERED_XN},
