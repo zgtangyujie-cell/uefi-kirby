@@ -67,6 +67,24 @@ KC=Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/KeyCallback.c
 sed -i 's/\(mEnterBootManager[[:space:]]*=[[:space:]]*\)FALSE/\1TRUE/' "$KC"
 grep -n "mEnterBootManager.*=" "$KC" | head -3
 
+# 关掉 ASSERT 的死循环。AutoGen.c 在每个驱动入口点末尾都有
+# ASSERT_EFI_ERROR (Status)，而"可选设备不存在"让驱动返回 EFI_NOT_FOUND 是完全
+# 正常的（kirby 上是 EnvDxeEnhanced），DxeCore 本来会卸载它继续走 —— 但
+# ASSERT 会先进 CpuDeadLoop，整个固件就钉死在一个不该管的驱动上。
+#
+# 0x2F = ASSERT(0x01) | PRINT(0x02) | CODE(0x04) | CLEAR_MEM(0x08) | DEADLOOP(0x20)
+# 0x02 = 只留 DEBUG 打印。
+#
+# 必须在 SiliciumPkg.dsc.inc 里改，不能在 kirbyPkg 的 dsc 里改：
+# PcdDebugPropertyMask 在 MdePkg.dec 里同时声明为 PcdsFixedAtBuild 和
+# PcdsPatchableInModule，而 DebugLib 取的是 PatchableInModule 那份。只在
+# kirby.dsc 的 [PcdsFixedAtBuild] 段赋值，DebugLib 仍然读到默认的 0x0f，bit0=1，
+# ASSERT 照样触发（实测两轮都死在同一行）。
+log "patching SiliciumPkg.dsc.inc: turn ASSERT into a no-op"
+SCD=Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc
+sed -i 's/PcdDebugPropertyMask|0x2F/PcdDebugPropertyMask|0x02/' "$SCD"
+grep -n "PcdDebugPropertyMask|" "$SCD"
+
 # 内存表打印已撤掉。它把整张 49 行表打到屏幕上，正好占满一屏，把之后异常转储
 # 的开头——PC、符号回溯 [0]/[1]、X0..X14——全挤出了屏幕顶部（满屏时
 # AdvanceNewLine 会 ZeroMem 清屏重画），崩溃现场最关键的那几行反而拍不到。
