@@ -133,6 +133,45 @@ GetMemoryMap (
   OUT UINT8                         *MemoryDescriptorCount
   )
 {
+  //
+  // SMEM probe (bring-up diagnostic, one shot).
+  //
+  // Why it lives here and not in its own driver: kirby.dec is empty, so kirbyPkg
+  // is not a fully declared EDK2 package, and the FDF silently drops
+  // "INF kirbyPkg/Drivers/..." lines even though [LibraryClasses] resolves the
+  // same prefix fine.  A standalone SmemProbeDxe therefore never reached the
+  // firmware volume (verified: neither its GUID nor its strings are in FVMAIN).
+  // This library, on the other hand, is proven to be compiled and linked.
+  //
+  // MemoryPeim calls GetMemoryMap while building the page tables, i.e. before
+  // the MMU is on, so this reads the physical region directly.  EFI_D_ERROR is
+  // used so the line survives any debug level filtering.
+  //
+  {
+    STATIC BOOLEAN  Probed = FALSE;
+
+    if (!Probed) {
+      STATIC volatile UINT32 *Smem = (volatile UINT32 *)(UINTN)0x81D00000;
+
+      Probed = TRUE;
+
+      DEBUG ((
+        EFI_D_ERROR,
+        "SMEM probe: %08x %08x %08x %08x\n",
+        Smem[0],
+        Smem[1],
+        Smem[2],
+        Smem[3]
+        ));
+      DEBUG ((
+        EFI_D_ERROR,
+        "SMEM magic=%08x expected=534d454d -> %a\n",
+        Smem[0],
+        (Smem[0] == 0x534D454D) ? "VALID" : "EMPTY-OR-WRONG"
+        ));
+    }
+  }
+
   // Pass Data
   *MemoryDescriptor      = gMemoryDescriptor;
   *MemoryDescriptorCount = ARRAY_SIZE (gMemoryDescriptor);
