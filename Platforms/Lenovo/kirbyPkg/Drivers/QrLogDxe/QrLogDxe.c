@@ -52,8 +52,20 @@
 // bytes the code is around version 25 and every module is comfortably wide.
 //
 #define QR_CHUNK_BYTES   760U
+
+//
+// Fixed version with an integer module pitch, and as few modules as the
+// payload allows: a version 18 code is 85 modules and holds 762 bytes at EC
+// level L, so the usual 670 byte buffer fits while every module gets 11
+// pixels.  Auto-versioning produced 9.4 pixels per module and the photograph
+// did not decode.
+//
+#define QR_VERSION       18U
+#define QR_MODULES       85U
+#define QR_SCALE         11U
+#define QR_QUIET_MARGIN  72U
 #define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 4U)
-#define QR_REGION_PX     1100U
+#define QR_REGION_PX     (QR_MODULES * QR_SCALE)
 
 //
 // The console proves this address is the panel: FrameBufferSerialPortLib
@@ -85,12 +97,24 @@ PaintPanel (
   UINTN   Row;
   UINTN   Col;
 
-  /* Black behind the code: the console keeps writing into the same buffer. */
-  for (Row = 0; Row < Size; Row++) {
-    UINT32 *Line = Panel + (OriginY + Row) * KIRBY_PANEL_W + OriginX;
+  /* White quiet zone first -- decoders need at least four modules of it. */
+  for (Row = 0; Row < Size + QR_QUIET_MARGIN * 2; Row++) {
+    if ((OriginY < QR_QUIET_MARGIN) || ((OriginY + Row - QR_QUIET_MARGIN) >= KIRBY_PANEL_H)) {
+      continue;
+    }
 
-    for (Col = 0; Col < Size; Col++) {
-      Line[Col] = 0;
+    {
+      UINT32 *Line = Panel + (OriginY + Row - QR_QUIET_MARGIN) * KIRBY_PANEL_W
+                     + ((OriginX > QR_QUIET_MARGIN) ? OriginX - QR_QUIET_MARGIN : 0);
+      UINTN  Width = Size + QR_QUIET_MARGIN * 2;
+
+      if ((OriginX + Width) > KIRBY_PANEL_W) {
+        Width = KIRBY_PANEL_W - OriginX + QR_QUIET_MARGIN;
+      }
+
+      for (Col = 0; Col < Width; Col++) {
+        Line[Col] = 0xFFFFFFFF;
+      }
     }
   }
 
@@ -179,7 +203,7 @@ DrawFrame (
 
   Bitmap = NULL;
   Status = QrEncodeData (
-             0, /* version: auto */
+             (UINT8)QR_VERSION,
              QrECLevel_L,
              QrByteMode,
              0,
