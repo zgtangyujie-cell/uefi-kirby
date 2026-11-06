@@ -45,9 +45,9 @@
 // at 760 GOP pixels that is ~7 px per module, and the panel doubles it, so a
 // photograph still resolves every module.
 //
-#define QR_CHUNK_BYTES   600U
-#define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 8U)
-#define QR_REGION_PX     760U
+#define QR_CHUNK_BYTES   1000U
+#define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 6U)
+#define QR_REGION_PX     1200U
 
 //
 // The console proves this address is the panel: FrameBufferSerialPortLib
@@ -77,6 +77,16 @@ PaintPanel (
   UINTN   OriginX = (KIRBY_PANEL_W - Size) / 2;
   UINTN   OriginY = (KIRBY_PANEL_H - Size) / 2;
   UINTN   Row;
+  UINTN   Col;
+
+  /* Black behind the code: the console keeps writing into the same buffer. */
+  for (Row = 0; Row < Size; Row++) {
+    UINT32 *Line = Panel + (OriginY + Row) * KIRBY_PANEL_W + OriginX;
+
+    for (Col = 0; Col < Size; Col++) {
+      Line[Col] = 0;
+    }
+  }
 
   for (Row = 0; Row < Size; Row++) {
     CopyMem (
@@ -100,8 +110,6 @@ DrawFrame (
 {
   EFI_STATUS                     Status;
   EFI_GRAPHICS_OUTPUT_BLT_PIXEL  *Bitmap;
-  EFI_GRAPHICS_OUTPUT_BLT_PIXEL  Black = { 0, 0, 0, 0 };
-  EFI_GRAPHICS_OUTPUT_BLT_PIXEL  White = { 0xFF, 0xFF, 0xFF, 0 };
   volatile UINT32                *Header;
   UINT32                         Used;
   UINT8                          *Tail;
@@ -109,8 +117,6 @@ DrawFrame (
   UINTN                          Frames;
   UINTN                          Offset;
   UINTN                          Length;
-  UINTN                          OriginX;
-  UINTN                          OriginY;
 
   if (mGop == NULL) {
     return;
@@ -181,9 +187,6 @@ DrawFrame (
     return;
   }
 
-  OriginX = (mWidth  > QR_REGION_PX) ? (mWidth  - QR_REGION_PX) / 2 : 0;
-  OriginY = (mHeight > QR_REGION_PX) ? (mHeight - QR_REGION_PX) / 2 : 0;
-
   if (!mReported) {
     mReported = TRUE;
     DEBUG ((
@@ -194,19 +197,6 @@ DrawFrame (
       (UINT32)Length
       ));
   }
-
-  Status = mGop->Blt (
-                    mGop,
-                    Bitmap,
-                    EfiBltBufferToVideo,
-                    0,
-                    0,
-                    OriginX,
-                    OriginY,
-                    QR_REGION_PX,
-                    QR_REGION_PX,
-                    0
-                    );
 
   PaintPanel (Bitmap, QR_REGION_PX);
 
@@ -222,20 +212,17 @@ DrawFrame (
       Total = 24;
     }
 
-    Start = (mWidth - (Total * (CellW + Gap))) / 2;
+    Start = (KIRBY_PANEL_W - (Total * (CellW + Gap))) / 2;
     for (Index = 0; Index < Total; Index++) {
-      mGop->Blt (
-                 mGop,
-                 (Index == (mFrame % Total)) ? &White : &Black,
-                 EfiBltVideoFill,
-                 0,
-                 0,
-                 Start + Index * (CellW + Gap),
-                 mHeight - 40,
-                 CellW,
-                 20,
-                 0
-                 );
+      UINT32 *Line = (UINT32 *)(UINTN)KIRBY_PANEL_BASE
+                     + (KIRBY_PANEL_H - 80) * KIRBY_PANEL_W
+                     + Start + Index * (CellW + Gap);
+      UINT32  Value = (Index == (mFrame % Total)) ? 0xFFFFFFFF : 0x00000000;
+      UINTN   Col;
+
+      for (Col = 0; Col < CellW; Col++) {
+        Line[Col] = Value;
+      }
     }
   }
 
@@ -316,8 +303,8 @@ QrLogDxeEntry (
     (UINT32)mGop->Mode->FrameBufferSize
     ));
 
-  if ((mWidth < QR_REGION_PX) || (mHeight < QR_REGION_PX)) {
-    DEBUG ((DEBUG_ERROR, "QrLog: gop too small for %u px QR\n", (UINT32)QR_REGION_PX));
+  if ((KIRBY_PANEL_W < QR_REGION_PX) || (KIRBY_PANEL_H < QR_REGION_PX)) {
+    DEBUG ((DEBUG_ERROR, "QrLog: panel too small for %u px QR\n", (UINT32)QR_REGION_PX));
     return EFI_SUCCESS;
   }
 
