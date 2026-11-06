@@ -32,6 +32,19 @@ git fetch --depth 1 origin "$MU_COMMIT" 2>/dev/null || git fetch origin
 git checkout -f "$MU_COMMIT"
 git submodule update --init --recursive --depth 1
 
+#
+# SEC entry-argument handoff, copied from UniXNU-caihong's
+# patches/uefi-integration.patch (same Mu-Silicium base: the index line of
+# ModuleEntryPoint.S matches).  Without it x0 -- the FDT pointer the bootloader
+# passes in -- is overwritten by EL1_OR_EL2 before anything saves it, so no
+# gSiliciumEntryArgHobGuid HOB is ever built, and UniXNURamDiskDxe can only
+# report "UNIXNURAMDISK: no entry argument HOB" while UniXNU stays on its
+# built-in configuration.
+#
+log "applying the SEC entry-argument patch"
+git -C Silicon/Silicium checkout -f .
+git -C Silicon/Silicium apply -p2 --ignore-whitespace "$ROOT/patches/sec-entry-arg.patch"
+
 log "installing the kirby device package"
 cp -r "$ROOT/Platforms/Lenovo/kirbyPkg" Platforms/Lenovo/
 cp    "$ROOT/Resources/Configs/kirby.toml" Resources/Configs/
