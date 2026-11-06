@@ -115,6 +115,20 @@ else:
     print("added SetVariable probe")
 DXEEOF
 
+#
+# Diagnostic only.  The probe proved the arguments are valid -- attr=0x7
+# (NV|BS|RT) and size=96 -- yet SetVariable still returns EFI_INVALID_PARAMETER.
+# This platform's VariableRuntimeDxe has no flash FVB, so it refuses
+# EFI_VARIABLE_NON_VOLATILE outright; that is also why BDS keeps falling back to
+# its default boot-device list.  Write the option as volatile instead:
+# BootOrder then lives for one power cycle, which is all `fastboot boot` needs.
+# Revert once the platform has a real NV store.
+#
+if [ -f "$UNIXNU_DXE_C" ]; then
+  sed -i 's/(EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS)/(EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS)/' "$UNIXNU_DXE_C"
+  log "made the UniXNU boot option volatile (no NV store on this platform)"
+fi
+
 # stuart does not read PACKAGES_PATH from the environment: kirbyPkg's
 # DeviceBuild.GetPackagesPath() is the list it actually uses, and that is where
 # the two UniXNU roots are appended.  Exported here only for documentation.
