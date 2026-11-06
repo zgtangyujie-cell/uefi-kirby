@@ -148,23 +148,23 @@ APRIORI DXE {
   # INF Binaries/kirby/QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf
   # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
   # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
-  INF Binaries/kirby/QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.inf
+  # INF Binaries/kirby/QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.inf
   # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
   # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
-  INF Binaries/kirby/QcomPkg/Drivers/XhciDxe/XhciDxe.inf
+  # INF Binaries/kirby/QcomPkg/Drivers/XhciDxe/XhciDxe.inf
 
-  INF MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
-  INF MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
-  INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
+  # INF MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+  # INF MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
+  # INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
 
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
   # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
   # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
-  INF Binaries/kirby/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf
+  # INF Binaries/kirby/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf
   # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
   # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
-  INF Binaries/kirby/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
+  # INF Binaries/kirby/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
   # 退回：SPMI 需要 SPMI 控制器时钟，而时钟来自 ClockDxe -> RpmhDxe -> SMEM。
   # SMEM 未修好之前这条链是死的，加载它只会让启动停在 SPMI 而不是进菜单。
   # INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
