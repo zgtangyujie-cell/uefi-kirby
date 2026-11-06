@@ -102,6 +102,13 @@ import pathlib
 dbc = pathlib.Path(sys.argv[1])
 dlh = pathlib.Path(sys.argv[2])
 
+# A cached mu_basecore may still carry the previous run's edits (submodule
+# checkout does not always discard them), so every patch below has to be
+# idempotent: detect the marker, print, and carry on.
+if "kirby: ASSERT no-op" in dbc.read_text(encoding="utf-8"):
+    print("DebugLib already patched, skipping")
+    raise SystemExit(0)
+
 # --- 1. DebugAssertEnabled() -> FALSE -------------------------------------
 text = dbc.read_text(encoding="utf-8")
 gate = re.compile(
@@ -167,6 +174,10 @@ import pathlib
 
 path = pathlib.Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
+
+if "HorizontalResolution = Width  / 2" in text:
+    print("SimpleFb already halved, skipping")
+    raise SystemExit(0)
 
 pattern = re.compile(
     r"(mFrameBuffer\.Mode->Info->HorizontalResolution\s*=\s*)Width(\s*;)"

@@ -27,6 +27,7 @@
 
 [LibraryClasses]
   BaseMemoryLib
+  CacheMaintenanceLib
   DebugLib
   MemoryAllocationLib
   QrEncoderLib
