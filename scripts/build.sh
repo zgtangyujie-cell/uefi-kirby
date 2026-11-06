@@ -44,6 +44,17 @@ git submodule update --init --recursive --depth 1
 log "applying the SEC entry-argument patch"
 git -C Silicon/Silicium checkout -f .
 git -C Silicon/Silicium apply -p2 --ignore-whitespace "$ROOT/patches/sec-entry-arg.patch"
+#
+# Fail loudly if the patch did not take.  A silent no-op here costs a full
+# build + reboot + photograph cycle and then shows the same
+# "no entry argument HOB" as before, which is indistinguishable from the
+# patch never being written.
+#
+if ! grep -q gSecEntryArg0 Silicon/Silicium/SiliciumPkg/Sec/AArch64/ModuleEntryPoint.S; then
+  echo "ERROR: SEC entry-argument patch did not apply" >&2
+  exit 1
+fi
+git -C Silicon/Silicium diff --stat
 
 log "installing the kirby device package"
 cp -r "$ROOT/Platforms/Lenovo/kirbyPkg" Platforms/Lenovo/

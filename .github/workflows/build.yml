@@ -157,7 +157,14 @@ jobs:
              "$PUB/SILICIUM_UEFI-${{ steps.t.outputs.target }}.fd"
           printf '%s  %s\n' "$(sha256sum "$PUB/Mu-kirby-${{ steps.t.outputs.target }}.img" | cut -d' ' -f1)" \
              "Mu-kirby-${{ steps.t.outputs.target }}.img" > "$PUB/SHA256SUMS"
-          printf 'commit %s\ntarget %s\n' "${{ github.sha }}" "${{ steps.t.outputs.target }}" > "$PUB/BUILD-INFO.txt"
+          # Keep build.sh's tail next to BUILD-INFO: it is the only place that
+          # records whether the SEC patch applied and how big the ramdisk was,
+          # and it is readable anonymously through this branch.
+          {
+            printf 'commit %s\ntarget %s\n' "${{ github.sha }}" "${{ steps.t.outputs.target }}"
+            echo '--- build.sh tail ---'
+            tail -40 "$RUNNER_TEMP/build-sh.log" 2>/dev/null || true
+          } > "$PUB/BUILD-INFO.txt"
 
           cd "$PUB"
           git init -q
