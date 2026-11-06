@@ -120,6 +120,16 @@
   HobLib|MdePkg/Library/DxeHobLib/DxeHobLib.inf
   FdtLib|MdePkg/Library/BaseFdtLib/BaseFdtLib.inf
 
+  #
+  # UniXNUPkg.dec declares UniXNULib as the boot-manager core shared by the
+  # application and the DXE driver builds.  Without this mapping the build
+  # stops at
+  #   error 4000: Instance of library class [UniXNULib] is not found
+  # for UniXNU.inf.  It is the only custom library class in that package --
+  # every other class the four modules consume is a standard MdePkg one.
+  #
+  UniXNULib|UniXNUPkg/Library/UniXNULib/UniXNULib.inf
+
 [Components]
   #
   # Bring-up diagnostics
