@@ -44,18 +44,87 @@ git submodule update --init --recursive --depth 1
 log "applying the SEC entry-argument patch"
 git -C Silicon/Silicium checkout -f .
 #
-# -p3, not -p2: the patch paths are a/Silicon/Silicium/SiliciumPkg/... and this
-# runs inside the Silicon/Silicium submodule, so three leading components have
-# to go (a, Silicon, Sicilium) to leave SiliciumPkg/....  -p2 made git apply
-# look for Silicium/SiliciumPkg/..., which does not exist, and it skipped the
-# whole patch without failing the build.
+# Plain text edits instead of git apply: the patch (copied from
+# UniXNU-caihong's uefi-integration.patch) made git apply report "Skipped
+# patch" for all four files and change nothing, and the resulting build looked
+# exactly like a patch that applied and did not help.  These edits are
+# idempotent and print what they did.
 #
-git -C Silicon/Silicium apply -p3 --verbose --ignore-whitespace "$ROOT/patches/sec-entry-arg.patch"
+python3 - <<'SECEOF'
+import pathlib, sys
+
+base = pathlib.Path("Silicon/Silicium/SiliciumPkg")
+
+# 1. ModuleEntryPoint.S -- keep x0 (the FDT pointer) before platform code uses it.
+p = base / "Sec/AArch64/ModuleEntryPoint.S"
+text = p.read_text(encoding="utf-8")
+if "gSecEntryArg0" in text:
+    print("ModuleEntryPoint.S already patched")
+else:
+    anchor = "ASM_FUNC (_ModuleEntryPoint)\n"
+    if anchor not in text:
+        sys.exit("ModuleEntryPoint.S: anchor not found")
+    ins = (anchor
+           + "  // Preserve the bootloader's FDT pointer before platform code uses x0.\n"
+           + "  adr   x1, ASM_PFX (gSecEntryArg0)\n"
+           + "  str   x0, [x1]\n"
+           + "  // SecEntry invalidates the FD cache; commit this slot before that happen.\n"
+           + "  dc    cvac, x1\n"
+           + "  dsb   sy\n")
+    text = text.replace(anchor, ins, 1)
+    text = text.rstrip("\n") + "\n\n  .align 3\n  .global ASM_PFX (gSecEntryArg0)\nASM_PFX (gSecEntryArg0):\n  .quad 0\n"
+    p.write_text(text, encoding="utf-8")
+    print("patched ModuleEntryPoint.S")
+
+# 2. Sec.c -- publish that slot as a GUID HOB.
+p = base / "Sec/Sec.c"
+text = p.read_text(encoding="utf-8")
+if "gSecEntryArg0" in text:
+    print("Sec.c already patched")
+else:
+    anchor = '#include "Sec.h"\n'
+    if anchor not in text:
+        sys.exit("Sec.c: include anchor not found")
+    text = text.replace(anchor, anchor + "\nextern UINT64 gSecEntryArg0;\n", 1)
+    anchor2 = "  // Run Library Cconstructors\n"
+    if anchor2 not in text:
+        sys.exit("Sec.c: constructor anchor not found")
+    ins = ("  // Publish the bootloader supplied argument (x0 = FDT pointer) for later phases.\n"
+           + "  BuildGuidDataHob (&gSiliciumEntryArgHobGuid, &gSecEntryArg0, sizeof (gSecEntryArg0));\n\n")
+    text = text.replace(anchor2, ins + anchor2, 1)
+    p.write_text(text, encoding="utf-8")
+    print("patched Sec.c")
+
+# 3. Sec.inf / SiliciumPkg.dec -- declare the GUID.
+p = base / "Sec/Sec.inf"
+text = p.read_text(encoding="utf-8")
+if "gSiliciumEntryArgHobGuid" in text:
+    print("Sec.inf already patched")
+else:
+    anchor = "[Guids]\n"
+    if anchor not in text:
+        sys.exit("Sec.inf: [Guids] not found")
+    p.write_text(text.replace(anchor, anchor + "  gSiliciumEntryArgHobGuid\n", 1), encoding="utf-8")
+    print("patched Sec.inf")
+
+p = base / "SiliciumPkg.dec"
+text = p.read_text(encoding="utf-8")
+if "gSiliciumEntryArgHobGuid" in text:
+    print("SiliciumPkg.dec already patched")
+else:
+    anchor = "[Guids]\n"
+    if anchor not in text:
+        sys.exit("SiliciumPkg.dec: [Guids] not found")
+    line = ("  gSiliciumEntryArgHobGuid            = { 0xDAEE82E6, 0x8090, 0x4E72, "
+            "{ 0xBF, 0xB9, 0x78, 0xC1, 0x3C, 0xD4, 0xE3, 0x59 } }\n")
+    p.write_text(text.replace(anchor, anchor + line, 1), encoding="utf-8")
+    print("patched SiliciumPkg.dec")
+SECEOF
+
 #
-# Fail loudly if the patch did not take.  A silent no-op here costs a full
+# Fail loudly if the edit did not take.  A silent no-op here costs a full
 # build + reboot + photograph cycle and then shows the same
-# "no entry argument HOB" as before, which is indistinguishable from the
-# patch never being written.
+# "no entry argument HOB" as before.
 #
 if ! grep -q gSecEntryArg0 Silicon/Silicium/SiliciumPkg/Sec/AArch64/ModuleEntryPoint.S; then
   echo "ERROR: SEC entry-argument patch did not apply" >&2
