@@ -68,6 +68,22 @@ jobs:
       - name: Build the boot image
         run: bash ./scripts/build.sh "$RUNNER_TEMP/work" "${{ steps.t.outputs.target }}"
 
+      # The job log endpoint needs admin rights even on a public repository, so
+      # a failed build would otherwise be completely opaque from the outside.
+      # EDK2 writes every compiler diagnostic into BUILDLOG_kirbyPkg.txt; put it
+      # in the step log so the failure can be read without a token.
+      - name: Dump build log on failure
+        if: failure()
+        run: |
+          f="$RUNNER_TEMP/work/uefi/Build/BUILDLOG_kirbyPkg.txt"
+          if [ -f "$f" ]; then
+            echo "=== BUILDLOG_kirbyPkg.txt (tail 400) ==="
+            tail -400 "$f"
+          else
+            echo "no BUILDLOG at $f"
+            ls -la "$RUNNER_TEMP/work/uefi/Build" 2>/dev/null || true
+          fi
+
       - name: Report
         run: |
           img=$(ls "$RUNNER_TEMP"/work/uefi/Mu-kirby-0.img)
