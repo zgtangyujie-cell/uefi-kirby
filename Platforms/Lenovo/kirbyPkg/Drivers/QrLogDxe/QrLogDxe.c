@@ -48,11 +48,48 @@
 #define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 8U)
 #define QR_REGION_PX     760U
 
+//
+// The console proves this address is the panel: FrameBufferSerialPortLib
+// finds "Display Reserved" in MemoryMapLib and writes there, and its text is
+// what we see.  Gop->Mode->FrameBufferBase reports 0x1B000000 instead, which
+// is a different buffer entirely.
+//
+#define KIRBY_PANEL_BASE 0xD5100000ULL
+#define KIRBY_PANEL_W    1600U
+#define KIRBY_PANEL_H    2560U
+
 STATIC EFI_GRAPHICS_OUTPUT_PROTOCOL  *mGop;
 STATIC UINTN                          mWidth;
 STATIC UINTN                          mHeight;
 STATIC UINTN                          mFrame;
 STATIC BOOLEAN                        mReported;
+STATIC BOOLEAN                        mTickReported;
+
+STATIC
+VOID
+PaintPanel (
+  IN EFI_GRAPHICS_OUTPUT_BLT_PIXEL  *Bitmap,
+  IN UINTN                          Size
+  )
+{
+  UINT32  *Panel = (UINT32 *)(UINTN)KIRBY_PANEL_BASE;
+  UINTN   OriginX = (KIRBY_PANEL_W - Size) / 2;
+  UINTN   OriginY = (KIRBY_PANEL_H - Size) / 2;
+  UINTN   Row;
+
+  for (Row = 0; Row < Size; Row++) {
+    CopyMem (
+      Panel + (OriginY + Row) * KIRBY_PANEL_W + OriginX,
+      Bitmap + Row * Size,
+      Size * sizeof (*Bitmap)
+      );
+  }
+
+  WriteBackInvalidateDataCacheRange (
+    (VOID *)(UINTN)KIRBY_PANEL_BASE,
+    (UINTN)KIRBY_PANEL_W * KIRBY_PANEL_H * 4
+    );
+}
 
 STATIC
 VOID
@@ -82,6 +119,16 @@ DrawFrame (
   WriteBackInvalidateDataCacheRange ((VOID *)(UINTN)KIRBY_LOG_BASE, KIRBY_LOG_MAX);
 
   Header = (volatile UINT32 *)(UINTN)KIRBY_LOG_BASE;
+  if (!mTickReported) {
+    mTickReported = TRUE;
+    DEBUG ((
+      DEBUG_ERROR,
+      "QrLog tick: magic=%08x used=%u\n",
+      Header[0],
+      Header[1]
+      ));
+  }
+
   if (Header[0] != KIRBY_LOG_MAGIC) {
     return;
   }
@@ -160,6 +207,8 @@ DrawFrame (
                     0
                     );
 
+  PaintPanel (Bitmap, QR_REGION_PX);
+
   /* One white square per frame at the bottom edge, current one highlighted. */
   {
     UINTN                          Index;
@@ -218,6 +267,7 @@ QrLogDxeEntry (
   mGop      = NULL;
   mFrame    = 0;
   mReported = FALSE;
+  mTickReported = FALSE;
 
   Status = gBS->LocateProtocol (&gEfiGraphicsOutputProtocolGuid, NULL, (VOID **)&mGop);
   if (EFI_ERROR (Status) || (mGop == NULL)) {
@@ -252,7 +302,8 @@ QrLogDxeEntry (
     return EFI_SUCCESS;
   }
 
-  gBS->SetTimer (Timer, TimerPeriodic, 2 * 1000 * 1000);
+  Status = gBS->SetTimer (Timer, TimerPeriodic, 2 * 1000 * 1000);
+  DEBUG ((DEBUG_ERROR, "QrLog: timer %r\n", Status));
 
   return EFI_SUCCESS;
 }
