@@ -120,12 +120,23 @@ ReportProtocols (
   EFI_STATUS  Status;
   EFI_HANDLE  *Handles;
   UINTN       Count;
+  UINTN       Index;
 
   Handles = NULL;
   Count   = 0;
   Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiBlockIoProtocolGuid, NULL, &Count, &Handles);
   DEBUG ((DEBUG_ERROR, "QrLog: BlockIo=%u %r\n", (UINT32)Count, Status));
   if (Handles != NULL) {
+    //
+    // Nothing runs a connect pass on a handle that appears this late:
+    // UniXNURamDiskDxe publishes its BlockIo during driver dispatch, long after
+    // BDS's last ConnectController, so DiskIoDxe/Fat never get a chance to bind
+    // it.  Force one pass here before counting, otherwise SimpleFileSystem is
+    // always zero no matter how good the FAT image is.
+    //
+    for (Index = 0; Index < Count; Index++) {
+      gBS->ConnectController (Handles[Index], NULL, NULL, TRUE);
+    }
     FreePool (Handles);
   }
 
