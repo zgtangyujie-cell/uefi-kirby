@@ -355,9 +355,16 @@ QrLogDxeEntry (
     );
 
   //
-  // Hand back to BDS.  The boot path no longer depends on UniXNUDxe writing
-  // Boot#### -- PcdBootManagerMenuFile points BDS straight at UniXNU.efi -- so
-  // holding the panel here would only block the thing we want to see.
+  // Hold the panel again for a capture.  The payload did not show up in UniXNU
+  // (BDS still reports 964E5B22 / SimpleFileSystem missing, and the menu fell
+  // back to the built-in configuration), so the next question is what
+  // UniXNURamDiskDxe saw when it looked for the initrd handover.  It runs well
+  // before this driver, so its lines are already in Log_Buffer; returning would
+  // let BDS scroll them off the panel.
   //
+  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
+    gBS->Stall (1000000);
+  }
+
   return EFI_SUCCESS;
 }
