@@ -70,19 +70,35 @@ jobs:
 
       # The job log endpoint needs admin rights even on a public repository, so
       # a failed build would otherwise be completely opaque from the outside.
-      # EDK2 writes every compiler diagnostic into BUILDLOG_kirbyPkg.txt; put it
-      # in the step log so the failure can be read without a token.
-      - name: Dump build log on failure
+      # EDK2 writes every compiler diagnostic into BUILDLOG_kirbyPkg.txt.  Print
+      # it, and also publish it to a ci-log branch: that branch is readable with
+      # a plain anonymous git clone, which is how a red run actually gets
+      # diagnosed from this side.
+      - name: Publish build log on failure
         if: failure()
         run: |
+          set -eu
           f="$RUNNER_TEMP/work/uefi/Build/BUILDLOG_kirbyPkg.txt"
-          if [ -f "$f" ]; then
-            echo "=== BUILDLOG_kirbyPkg.txt (tail 400) ==="
-            tail -400 "$f"
-          else
+          if [ ! -f "$f" ]; then
             echo "no BUILDLOG at $f"
             ls -la "$RUNNER_TEMP/work/uefi/Build" 2>/dev/null || true
+            exit 0
           fi
+          echo "=== BUILDLOG_kirbyPkg.txt (tail 400) ==="
+          tail -400 "$f"
+
+          PUB="$RUNNER_TEMP/failog"
+          mkdir -p "$PUB"
+          tail -800 "$f" > "$PUB/BUILDLOG-tail.txt"
+          printf 'commit %s\ntarget %s\n' "${{ github.sha }}" "${{ steps.t.outputs.target }}" > "$PUB/FAILED.txt"
+          cd "$PUB"
+          git init -q
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b ci-log
+          git add -A
+          git commit -q -m "build log ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-log
 
       - name: Report
         run: |
