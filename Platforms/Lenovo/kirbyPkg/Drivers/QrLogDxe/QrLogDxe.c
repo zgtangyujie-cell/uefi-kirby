@@ -46,14 +46,14 @@
 // photograph still resolves every module.
 //
 //
-// QR version 40 at EC level L holds 2953 payload bytes, so the usual log
-// (2.9 KB at driver entry) fits in a single code.  One frame means the panel
-// stops blinking and one photograph is enough; the tail is still capped so a
-// longer log degrades to two or three frames instead of failing.
+// 760 bytes per frame, matching UniXNU's AdvancedLogDxe (OneSend frames are
+// 28 + 720 + 4 = 752).  A 2900 byte frame forced QR version 40 -- 177 modules
+// -- and the modules came out too small to decode from a photograph.  At 760
+// bytes the code is around version 25 and every module is comfortably wide.
 //
-#define QR_CHUNK_BYTES   2900U
-#define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 3U)
-#define QR_REGION_PX     1400U
+#define QR_CHUNK_BYTES   760U
+#define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 4U)
+#define QR_REGION_PX     1100U
 
 //
 // The console proves this address is the panel: FrameBufferSerialPortLib
