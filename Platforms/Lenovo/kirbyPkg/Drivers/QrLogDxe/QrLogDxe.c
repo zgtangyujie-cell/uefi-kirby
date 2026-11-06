@@ -355,16 +355,11 @@ QrLogDxeEntry (
     );
 
   //
-  // Hold the panel again for a capture.  The payload did not show up in UniXNU
-  // (BDS still reports 964E5B22 / SimpleFileSystem missing, and the menu fell
-  // back to the built-in configuration), so the next question is what
-  // UniXNURamDiskDxe saw when it looked for the initrd handover.  It runs well
-  // before this driver, so its lines are already in Log_Buffer; returning would
-  // let BDS scroll them off the panel.
+  // Hand back to BDS.  The payload chain is proven now:
+  //   UNIXNURAMDISK: initrd block device 0xB755F000 size 0xA9F600 Success
+  // so BDS can start UniXNU through PcdBootManagerMenuFile and it should find
+  // \EFI\UniXNU\unixnu.toml on the ramdisk volume instead of falling back to
+  // the built-in configuration.
   //
-  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
-    gBS->Stall (1000000);
-  }
-
   return EFI_SUCCESS;
 }
