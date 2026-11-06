@@ -92,6 +92,21 @@
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x02
   gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000002
 
+  #
+  # Variable store.
+  #
+  # This platform has no flash FVB.  VariableRuntimeDxe therefore has no NV
+  # backend, rejects NV variables with EFI_INVALID_PARAMETER -- proven by the
+  # UniXNUDxe probe, which printed attr=0x7 size=96 (both valid) and still got
+  # 0x2 -- and BDS falls back to its default boot-device list because BootOrder
+  # cannot be written either.
+  #
+  # EmuNvMode makes the driver emulate an NV store in RAM: NV semantics hold for
+  # the session, nothing is written to any partition.  Dropping the NV attribute
+  # from UniXNUDxe instead was tried and does not help (attr=0x6 still fails).
+  #
+  gEfiMdeModulePkgTokenSpaceGuid.PcdEmuVariableNvModeEnable|TRUE
+
 [Packages]
   #
   # UniXNU required integration.  DarwinBoot.inf consumes

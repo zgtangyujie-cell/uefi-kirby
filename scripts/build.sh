@@ -124,10 +124,12 @@ DXEEOF
 # BootOrder then lives for one power cycle, which is all `fastboot boot` needs.
 # Revert once the platform has a real NV store.
 #
-if [ -f "$UNIXNU_DXE_C" ]; then
-  sed -i 's/(EFI_VARIABLE_NON_VOLATILE | EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS)/(EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS)/' "$UNIXNU_DXE_C"
-  log "made the UniXNU boot option volatile (no NV store on this platform)"
-fi
+#
+# Dropping EFI_VARIABLE_NON_VOLATILE from UniXNUDxe was the wrong guess: the
+# probe then printed attr=0x6 and SetVariable still returned EFI_INVALID_PARAMETER.
+# Keep the option's normal NV|BS|RT attributes and fix the store instead --
+# PcdEmuVariableNvModeEnable = TRUE in kirby.dsc (see the comment there).
+#
 
 # stuart does not read PACKAGES_PATH from the environment: kirbyPkg's
 # DeviceBuild.GetPackagesPath() is the list it actually uses, and that is where
