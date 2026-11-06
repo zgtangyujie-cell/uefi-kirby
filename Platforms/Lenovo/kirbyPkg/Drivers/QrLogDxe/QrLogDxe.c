@@ -117,7 +117,7 @@ STATIC BOOLEAN                        mTickReported;
 // "Value of Protocol [gEfiUnicodeCollationProtocolGuid] is not found under
 // [Protocols] section".
 //
-STATIC CONST EFI_GUID  mUnicodeCollationGuid = {
+STATIC EFI_GUID  mUnicodeCollationGuid = {
   0x1D85CD7F, 0xF43D, 0x11D2, { 0x9A, 0xC2, 0x00, 0x90, 0x27, 0x3F, 0xC1, 0x4D }
 };
 
