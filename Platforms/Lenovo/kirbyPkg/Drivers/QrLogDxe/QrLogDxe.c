@@ -94,7 +94,7 @@ PaintPanel (
   )
 {
   UINT32  *Panel = (UINT32 *)(UINTN)KIRBY_PANEL_BASE;
-  UINTN   OriginX = 90;
+  UINTN   OriginX = (KIRBY_PANEL_W - Size) / 2;
   //
   // Centre it, and clear the whole panel first.  Centred is the framing that
   // actually decoded from a phone photograph; anchoring it at the bottom
@@ -102,7 +102,7 @@ PaintPanel (
   // sharp.  Clearing the rest removes the console text that would otherwise
   // bleed through and confuse the decoder.
   //
-  UINTN   OriginY = KIRBY_PANEL_H - Size - 90;
+  UINTN   OriginY = (KIRBY_PANEL_H - Size) / 2;
   UINTN   Row;
   UINTN   Col;
 
@@ -360,15 +360,20 @@ QrLogDxeEntry (
   // are printed after this driver returns, and this is the only later hook
   // that does not need a timer interrupt.
   //
-  Status = gBS->CreateEventEx (
-                  EVT_NOTIFY_SIGNAL,
-                  TPL_CALLBACK,
-                  OnReadyToBoot,
-                  NULL,
-                  &gEfiEventReadyToBootGuid,
-                  &Timer
-                  );
-  DEBUG ((DEBUG_ERROR, "QrLog: ready-to-boot hook %r\n", Status));
+  //
+  // Everything BDS draws -- its menu background included -- is painted with
+  // GOP fills straight after this driver returns, and none of the ClearScreen
+  // hooks can stop that.  Staying here keeps the code on the panel and freezes
+  // the boot at the last driver: acceptable for a bring-up image whose only
+  // job right now is to hand back an exact log.
+  //
+  for (;;) {
+    ShowRound ();
+    WriteBackInvalidateDataCacheRange (
+      (VOID *)(UINTN)KIRBY_PANEL_BASE,
+      (UINTN)KIRBY_PANEL_W * KIRBY_PANEL_H * 4
+      );
+  }
 
   return EFI_SUCCESS;
 }
