@@ -3,13 +3,19 @@
 
   The log itself is captured by FrameBufferSerialPortLib, which tees every
   byte it draws to the Log_Buffer region MemoryMapLib already reserves at
-  0xA7605000.  This driver picks the tail of that buffer up, slices it into
-  chunks small enough to scan from a photograph, and blits one QR per timer
-  tick.
+  0xA7605000.  This driver re-reads the tail of that buffer on every timer
+  tick -- the boot keeps printing long after the first tick -- slices it into
+  chunks small enough to scan from a photograph, and paints one QR directly
+  into the framebuffer.
 
-  Deliberately fail-safe: if there is no GOP, no log, or the encoder refuses
-  a chunk, it draws nothing and returns success.  It must never become the
-  next thing that stalls the boot.
+  Drawing goes straight to GOP's FrameBufferBase instead of Gop->Blt: the
+  platform's SimpleFbDxe is the same driver FrameBufferSerialPortLib already
+  writes through, so raw writes are the known-good path, and Blt support
+  (EfiBltBufferToVideo in particular) is not guaranteed there.
+
+  Deliberately fail-safe: no GOP, no log, or an encoder refusal all return
+  success without drawing.  It must never become the next thing that stalls
+  the boot.
 
   Copyright (c) 2026, kirby bring-up. SPDX-License-Identifier: BSD-2-Clause-Patent
 **/
@@ -35,51 +41,76 @@
 
 //
 // QR payload per frame.  ~900 bytes lands around version 26 at EC level L,
-// which is 121 modules: about 11 pixels per module on a 1400 pixel square,
+// which is 121 modules: about 11 pixels per module on a 1360 pixel square,
 // comfortably readable from a tablet photograph.
 //
 #define QR_CHUNK_BYTES   900U
-#define QR_REGION_PX     1360
+#define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 8U)
+#define QR_REGION_PX     1360U
 
 STATIC EFI_GRAPHICS_OUTPUT_PROTOCOL  *mGop;
-STATIC UINT8                         *mLog;
-STATIC UINT32                        mLogLen;
-STATIC UINTN                          mFrameCount;
+STATIC UINT8                         *mFb;
+STATIC UINTN                          mStride;
+STATIC UINTN                          mWidth;
+STATIC UINTN                          mHeight;
 STATIC UINTN                          mFrame;
+
+/*
+  The console shares this framebuffer, so the QR is repainted every tick and
+  simply wins once the boot stops printing.
+*/
+STATIC
+VOID
+FillRect (
+  IN UINTN                          X,
+  IN UINTN                          Y,
+  IN UINTN                          Width,
+  IN UINTN                          Height,
+  IN EFI_GRAPHICS_OUTPUT_BLT_PIXEL  *Color
+  )
+{
+  UINT32  Value;
+  UINT32  *Line;
+  UINTN   Row;
+  UINTN   Col;
+
+  Value = *(UINT32 *)Color;
+
+  for (Row = 0; Row < Height; Row++) {
+    if ((Y + Row) >= mHeight) {
+      break;
+    }
+
+    Line = (UINT32 *)(mFb + (Y + Row) * mStride * 4) + X;
+    for (Col = 0; Col < Width; Col++) {
+      if ((X + Col) >= mWidth) {
+        break;
+      }
+
+      Line[Col] = Value;
+    }
+  }
+}
 
 STATIC
 VOID
-DrawProgress (
-  IN UINTN  Current,
-  IN UINTN  Total
+PaintQr (
+  IN EFI_GRAPHICS_OUTPUT_BLT_PIXEL  *Bitmap,
+  IN UINTN                          Size,
+  IN UINTN                          OriginX,
+  IN UINTN                          OriginY
   )
 {
-  UINTN                          Index;
-  EFI_GRAPHICS_OUTPUT_BLT_PIXEL  On  = { 0xFF, 0xFF, 0xFF, 0 };
-  EFI_GRAPHICS_OUTPUT_BLT_PIXEL  Off = { 0x20, 0x20, 0x20, 0 };
-  UINTN                          Width;
-  UINTN                          Start;
+  UINT32  *Line;
+  UINTN   Row;
 
-  if ((Total == 0) || (Total > 32)) {
-    return;
-  }
+  for (Row = 0; Row < Size; Row++) {
+    if ((OriginY + Row) >= mHeight) {
+      break;
+    }
 
-  Width = 24;
-  Start = (mGop->Mode->Info->HorizontalResolution - (Total * (Width + 8))) / 2;
-
-  for (Index = 0; Index < Total; Index++) {
-    mGop->Blt (
-             mGop,
-             (Index == Current) ? &On : &Off,
-             EfiBltVideoFill,
-             0,
-             0,
-             Start + Index * (Width + 8),
-             mGop->Mode->Info->VerticalResolution - 60,
-             Width,
-             24,
-             0
-             );
+    Line = (UINT32 *)(mFb + (OriginY + Row) * mStride * 4) + OriginX;
+    CopyMem (Line, Bitmap + Row * Size, Size * 4);
   }
 }
 
@@ -91,69 +122,114 @@ DrawFrame (
 {
   EFI_STATUS                     Status;
   EFI_GRAPHICS_OUTPUT_BLT_PIXEL  *Bitmap;
-  UINT8                          *Chunk;
+  EFI_GRAPHICS_OUTPUT_BLT_PIXEL  Black = { 0, 0, 0, 0 };
+  EFI_GRAPHICS_OUTPUT_BLT_PIXEL  White = { 0xFF, 0xFF, 0xFF, 0 };
+  volatile UINT32                *Header;
+  UINT32                         Used;
+  UINT8                          *Tail;
+  UINTN                          TailLen;
+  UINTN                          Frames;
   UINTN                          Offset;
   UINTN                          Length;
-  UINTN                          X;
-  UINTN                          Y;
+  UINTN                          OriginX;
+  UINTN                          OriginY;
 
-  if ((mGop == NULL) || (mLogLen == 0) || (mFrameCount == 0)) {
+  if (mGop == NULL) {
     return;
   }
 
-  Offset = mFrame * QR_CHUNK_BYTES;
-  if (Offset >= mLogLen) {
-    mFrame = 0;
-    Offset = 0;
+  /* The tee keeps appending; re-read the length every tick. */
+  WriteBackInvalidateDataCacheRange ((VOID *)(UINTN)KIRBY_LOG_BASE, KIRBY_LOG_MAX);
+
+  Header = (volatile UINT32 *)(UINTN)KIRBY_LOG_BASE;
+  if (Header[0] != KIRBY_LOG_MAGIC) {
+    return;
   }
 
-  Length = mLogLen - Offset;
+  Used = Header[1];
+  if (Used > (KIRBY_LOG_MAX - KIRBY_LOG_HDR)) {
+    Used = KIRBY_LOG_MAX - KIRBY_LOG_HDR;
+  }
+
+  if (Used == 0) {
+    return;
+  }
+
+  Tail    = (UINT8 *)(UINTN)(KIRBY_LOG_BASE + KIRBY_LOG_HDR);
+  TailLen = Used;
+  if (TailLen > QR_TAIL_BYTES) {
+    Tail   += TailLen - QR_TAIL_BYTES;
+    TailLen = QR_TAIL_BYTES;
+  }
+
+  Frames = (TailLen + QR_CHUNK_BYTES - 1) / QR_CHUNK_BYTES;
+  if (Frames == 0) {
+    Frames = 1;
+  }
+
+  if (mFrame >= Frames) {
+    mFrame = 0;
+  }
+
+  Offset = mFrame * QR_CHUNK_BYTES;
+  Length = TailLen - Offset;
   if (Length > QR_CHUNK_BYTES) {
     Length = QR_CHUNK_BYTES;
   }
 
-  Chunk  = mLog + Offset;
   Bitmap = NULL;
-
   Status = QrEncodeData (
-             0,                     /* version: auto */
+             0, /* version: auto */
              QrECLevel_L,
              QrByteMode,
              0,
-             Chunk,
+             Tail + Offset,
              (UINT16)Length,
              QR_REGION_PX,
              &Bitmap
              );
   if (EFI_ERROR (Status) || (Bitmap == NULL)) {
-    DEBUG ((DEBUG_ERROR, "QrLog: encode frame %u failed: %r\n", mFrame, Status));
     return;
   }
 
-  X = (mGop->Mode->Info->HorizontalResolution - QR_REGION_PX) / 2;
-  Y = (mGop->Mode->Info->VerticalResolution   - QR_REGION_PX) / 2;
-  if (Y > 40) {
-    Y -= 40;
+  OriginX = (mWidth  > QR_REGION_PX) ? (mWidth  - QR_REGION_PX) / 2 : 0;
+  OriginY = (mHeight > QR_REGION_PX) ? (mHeight - QR_REGION_PX) / 2 : 0;
+
+  FillRect (OriginX, OriginY, QR_REGION_PX, QR_REGION_PX, &White);
+  PaintQr (Bitmap, QR_REGION_PX, OriginX, OriginY);
+
+  /* One white square per frame at the bottom edge, current one highlighted. */
+  {
+    UINTN                          Index;
+    UINTN                          CellW = 20;
+    UINTN                          Gap   = 10;
+    UINTN                          Total = Frames;
+    UINTN                          Start;
+
+    if (Total > 24) {
+      Total = 24;
+    }
+
+    Start = (mWidth - (Total * (CellW + Gap))) / 2;
+    for (Index = 0; Index < Total; Index++) {
+      FillRect (
+               Start + Index * (CellW + Gap),
+               mHeight - 40,
+               CellW,
+               20,
+               (Index == (mFrame % Total)) ? &White : &Black
+               );
+    }
   }
 
-  mGop->Blt (
-           mGop,
-           Bitmap,
-           EfiBltBufferToVideo,
-           0,
-           0,
-           X,
-           Y,
-           QR_REGION_PX,
-           QR_REGION_PX,
-           0
-           );
-
-  DrawProgress (mFrame, mFrameCount);
+  WriteBackInvalidateDataCacheRange (
+    (VOID *)(mFb + OriginY * mStride * 4),
+    QR_REGION_PX * mStride * 4
+    );
 
   FreePool (Bitmap);
 
-  mFrame = (mFrame + 1) % mFrameCount;
+  mFrame = (mFrame + 1) % Frames;
 }
 
 STATIC
@@ -176,48 +252,30 @@ QrLogDxeEntry (
 {
   EFI_STATUS  Status;
   EFI_EVENT   Timer;
-  UINT32      *Header;
-  UINT32      Used;
 
-  mGop = NULL;
+  mGop   = NULL;
+  mFrame = 0;
+
   Status = gBS->LocateProtocol (&gEfiGraphicsOutputProtocolGuid, NULL, (VOID **)&mGop);
   if (EFI_ERROR (Status) || (mGop == NULL)) {
     return EFI_SUCCESS;
   }
 
-  Header = (UINT32 *)(UINTN)KIRBY_LOG_BASE;
+  mFb     = (UINT8 *)(UINTN)mGop->Mode->FrameBufferBase;
+  mStride = mGop->Mode->Info->PixelsPerScanLine;
+  //
+  // scripts/build.sh patches SimpleFb so the GOP *reports* half the panel
+  // (800x1280) while PixelsPerScanLine stays at the real 1600, which is how
+  // the console gets 2x characters.  The QR is painted into the real panel,
+  // so take the width from the stride and the height from the buffer size --
+  // using Info->HorizontalResolution would clamp us to 800 and then bail out.
+  //
+  mWidth  = mStride;
+  mHeight = (mStride == 0) ? 0 : (mGop->Mode->FrameBufferSize / (mStride * 4U));
 
-  /* The tee ran from SEC/PEI with the MMU off; make sure DXE does not read a
-     stale cache line before trusting the header. */
-  WriteBackInvalidateDataCacheRange ((VOID *)(UINTN)KIRBY_LOG_BASE, KIRBY_LOG_MAX);
-
-  if (Header[0] != KIRBY_LOG_MAGIC) {
-    DEBUG ((DEBUG_ERROR, "QrLog: no KLOG header (%08x), nothing to show\n", Header[0]));
+  if ((mFb == NULL) || (mStride < mWidth) || (mWidth < QR_REGION_PX) || (mHeight < QR_REGION_PX)) {
     return EFI_SUCCESS;
   }
-
-  Used = Header[1];
-  if (Used > (KIRBY_LOG_MAX - KIRBY_LOG_HDR)) {
-    Used = KIRBY_LOG_MAX - KIRBY_LOG_HDR;
-  }
-
-  /* Keep the tail: when the firmware dies, the last lines are the story. */
-  if (Used > (QR_CHUNK_BYTES * 8)) {
-    mLog    = (UINT8 *)(UINTN)KIRBY_LOG_BASE + KIRBY_LOG_HDR + (Used - QR_CHUNK_BYTES * 8);
-    mLogLen = QR_CHUNK_BYTES * 8;
-  } else {
-    mLog    = (UINT8 *)(UINTN)KIRBY_LOG_BASE + KIRBY_LOG_HDR;
-    mLogLen = Used;
-  }
-
-  if (mLogLen == 0) {
-    return EFI_SUCCESS;
-  }
-
-  mFrameCount = (mLogLen + QR_CHUNK_BYTES - 1) / QR_CHUNK_BYTES;
-  mFrame      = 0;
-
-  DEBUG ((DEBUG_ERROR, "QrLog: %u bytes, %u frames\n", mLogLen, mFrameCount));
 
   Status = gBS->CreateEvent (EVT_TIMER, TPL_CALLBACK, OnTimer, NULL, &Timer);
   if (EFI_ERROR (Status)) {
