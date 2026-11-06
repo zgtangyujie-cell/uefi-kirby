@@ -121,7 +121,12 @@
   # at UniXNU.efi (FILE_GUID of UniXNUPkg/Application/UniXNU/UniXNU.inf) and BDS
   # starts UniXNU without touching the variable store at all.
   #
-  gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile|{GUID("9B665204-A133-47A2-9396-9E2B370A4E25")}
+  #
+  # Spelled as a byte array on purpose: {GUID("...")} is a .dec construct, the
+  # DSC parser wants the raw EFI_GUID bytes (Data1..Data3 little endian).
+  # 9B665204-A133-47A2-9396-9E2B370A4E25
+  #
+  gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile|{0x04, 0x52, 0x66, 0x9B, 0x33, 0xA1, 0xA2, 0x47, 0x93, 0x96, 0x9E, 0x2B, 0x37, 0x0A, 0x4E, 0x25}
 
 [Packages]
   #

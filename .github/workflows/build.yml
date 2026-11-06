@@ -73,7 +73,10 @@ jobs:
           mono --version | head -1
 
       - name: Build the boot image
-        run: bash ./scripts/build.sh "$RUNNER_TEMP/work" "${{ steps.t.outputs.target }}"
+        run: |
+          set -o pipefail
+          bash ./scripts/build.sh "$RUNNER_TEMP/work" "${{ steps.t.outputs.target }}" 2>&1 \
+            | tee "$RUNNER_TEMP/build-sh.log"
 
       # The job log endpoint needs admin rights even on a public repository, so
       # a failed build would otherwise be completely opaque from the outside.
@@ -97,6 +100,12 @@ jobs:
           PUB="$RUNNER_TEMP/failog"
           mkdir -p "$PUB"
           tail -800 "$f" > "$PUB/BUILDLOG-tail.txt"
+          # build.sh's own output.  Run 105 died before EDK2 ever started and the
+          # BUILDLOG therefore still held the previous build, which told us
+          # nothing about the failure.
+          if [ -f "$RUNNER_TEMP/build-sh.log" ]; then
+            tail -200 "$RUNNER_TEMP/build-sh.log" > "$PUB/build-sh-tail.txt"
+          fi
           printf 'commit %s\ntarget %s\n' "${{ github.sha }}" "${{ steps.t.outputs.target }}" > "$PUB/FAILED.txt"
           cd "$PUB"
           git init -q
