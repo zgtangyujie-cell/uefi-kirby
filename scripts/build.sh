@@ -43,7 +43,14 @@ git submodule update --init --recursive --depth 1
 #
 log "applying the SEC entry-argument patch"
 git -C Silicon/Silicium checkout -f .
-git -C Silicon/Silicium apply -p2 --ignore-whitespace "$ROOT/patches/sec-entry-arg.patch"
+#
+# -p3, not -p2: the patch paths are a/Silicon/Silicium/SiliciumPkg/... and this
+# runs inside the Silicon/Silicium submodule, so three leading components have
+# to go (a, Silicon, Sicilium) to leave SiliciumPkg/....  -p2 made git apply
+# look for Silicium/SiliciumPkg/..., which does not exist, and it skipped the
+# whole patch without failing the build.
+#
+git -C Silicon/Silicium apply -p3 --verbose --ignore-whitespace "$ROOT/patches/sec-entry-arg.patch"
 #
 # Fail loudly if the patch did not take.  A silent no-op here costs a full
 # build + reboot + photograph cycle and then shows the same
