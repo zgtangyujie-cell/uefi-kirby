@@ -62,8 +62,8 @@
 //
 #define QR_VERSION       18U
 #define QR_MODULES       85U
-#define QR_SCALE         8U
-#define QR_QUIET_MARGIN  64U
+#define QR_SCALE         6U
+#define QR_QUIET_MARGIN  48U
 /* One frame only: a code that does not change is a code that can be
    photographed at leisure.  The tail is what matters after a hang. */
 #define QR_TAIL_BYTES    (QR_CHUNK_BYTES)

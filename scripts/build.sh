@@ -165,38 +165,29 @@ grep -n "PcdDebugPropertyMask|" "$SCD"
 # FrameBufferSize 保持 Width*Height*4 不变，buffer 仍是整块 1600x2560。
 # FrameBufferSerialPortLib 直接写 framebuffer、不走 GOP，所以早期文本输出
 # 不受影响，还是铺满全屏。
-log "patching SimpleFb.c: halve the GOP visible area so the menu is readable"
-SFB=Silicon/Silicium/SiliciumPkg/Drivers/SimpleFbDxe/SimpleFb.c
-python3 - "$SFB" <<'PYEOF'
-import re
-import sys
+# 不再把 GOP 分辨率减半。这个补丁当初是为了让字符大一点，但它让 BDS 菜单按
+# 800x1280 绘制，在 1600x2560 的面板上只占中间一小块；控制台文字同时被放大
+# 两倍，和二维码挤在一起，整屏看起来就是乱的。现在恢复真实分辨率，这一段只
+# 负责把以前打过的补丁还原回去（缓存树里可能还留着改过的文件）。
+log "restoring SimpleFb.c to the real GOP resolution (undo the earlier halving)"
+SFB=Silicon/Silicium/SiliciumPkg/SimpleFbDxe/SimpleFb.c
+if [ -f "$SFB" ]; then
+  python3 - "$SFB" <<'SFBEOF'
 import pathlib
+import sys
 
-path = pathlib.Path(sys.argv[1])
-text = path.read_text(encoding="utf-8")
-
-if "HorizontalResolution = Width  / 2" in text:
-    print("SimpleFb already halved, skipping")
+p = pathlib.Path(sys.argv[1])
+text = p.read_text(encoding="utf-8")
+if "HorizontalResolution = Width  / 2" not in text:
+    print("SimpleFb already at full resolution")
     raise SystemExit(0)
-
-pattern = re.compile(
-    r"(mFrameBuffer\.Mode->Info->HorizontalResolution\s*=\s*)Width(\s*;)"
-    r"(\s*\n\s*mFrameBuffer\.Mode->Info->VerticalResolution\s*=\s*)Height(\s*;)"
-)
-hits = pattern.findall(text)
-if len(hits) != 1:
-    print(f"GOP resolution assignment matched {len(hits)} times, expected 1", file=sys.stderr)
-    sys.exit(1)
-
-text = pattern.sub(
-    r"\1Width  / 2\2\3Height / 2\4",
-    text,
-    count=1,
-)
-path.write_text(text, encoding="utf-8")
-print("patched GOP resolution: visible area halved, PixelsPerScanLine untouched")
-PYEOF
-grep -n -B1 -A2 "HorizontalResolution = Width" "$SFB"
+text = text.replace("HorizontalResolution = Width  / 2;", "HorizontalResolution = Width;")
+text = text.replace("VerticalResolution   = Height / 2;", "VerticalResolution   = Height;")
+text = text.replace("VerticalResolution = Height / 2;", "VerticalResolution = Height;")
+p.write_text(text, encoding="utf-8")
+print("restored full resolution")
+SFBEOF
+fi
 
 # 内存表打印已撤掉。它把整张 49 行表打到屏幕上，正好占满一屏，把之后异常转储
 # 的开头——PC、符号回溯 [0]/[1]、X0..X14——全挤出了屏幕顶部（满屏时
