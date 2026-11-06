@@ -82,7 +82,6 @@ STATIC EFI_GRAPHICS_OUTPUT_PROTOCOL  *mGop;
 STATIC UINTN                          mWidth;
 STATIC UINTN                          mHeight;
 STATIC UINTN                          mFrame;
-STATIC BOOLEAN                        mReported;
 STATIC BOOLEAN                        mTickReported;
 
 STATIC
@@ -232,17 +231,10 @@ DrawFrame (
     return;
   }
 
-  if (!mReported) {
-    mReported = TRUE;
-    DEBUG ((
-      DEBUG_ERROR,
-      "QrLog: log %u bytes, %u frames, first chunk %u bytes\n",
-      (UINT32)Used,
-      (UINT32)Frames,
-      (UINT32)Length
-      ));
-  }
-
+  /* Do not DEBUG() from inside DrawFrame(): FrameBufferSerialPortLib tees every
+     debug byte back into KLOG, so a diagnostic printed here makes the NEXT
+     frame longer and the QR quietly changes under the camera.  Keep KLOG frozen
+     so every photograph decodes the same single static frame. */
   PaintPanel (Bitmap, QR_REGION_PX);
 
   /* One white square per frame at the bottom edge, current one highlighted. */
@@ -306,7 +298,6 @@ QrLogDxeEntry (
 
   mGop      = NULL;
   mFrame    = 0;
-  mReported = FALSE;
   mTickReported = FALSE;
 
   Status = gBS->LocateProtocol (&gEfiGraphicsOutputProtocolGuid, NULL, (VOID **)&mGop);
