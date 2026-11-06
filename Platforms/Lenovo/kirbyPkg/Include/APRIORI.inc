@@ -35,10 +35,11 @@ APRIORI DXE {
   # / ClockDxe ...）。移掉它之后这些驱动的 depex 永远不满足，DxeCore 会安静地
   # 跳过它们，不会 NOT_FOUND、不会 ASSERT，启动可以一路走到 BDS。
   # 这是为了先把菜单逼出来；SMEM 本身的问题之后单独修。
-  # 【探测】单变量实验：走 boot_a 正常启动流程后，SMEM 是否已被 ABL 初始化。
-  # 若这次不再报 "SMEM is not initialized by Boot."，说明换启动路径就是解，
-  # 整条 Qualcomm 栈都可以加回来；若仍报错，则 SMEM 与启动路径无关。
-  INF Binaries/kirby/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
+  # 【结论，2026-11-06】SmemProbeDxe 已经给出答案：0x81D00000 前四个字全是 0，
+  # magic 不是 534d454d —— ABL 在 fastboot boot 路径上没有建 SMEM，这不是启动
+  # 路径的问题。SmemDxe 因此永远返回 EFI_NOT_FOUND，并在 AutoGen 的
+  # ASSERT_EFI_ERROR 里死循环，把 DXE 卡在菜单之前。移出调度表和固件卷。
+  # INF Binaries/kirby/QcomPkg/Drivers/SmemDxe/SmemDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/DALSYSDxe/DALSYSDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
