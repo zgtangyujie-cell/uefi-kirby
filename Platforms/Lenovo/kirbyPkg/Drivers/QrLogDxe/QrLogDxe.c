@@ -45,9 +45,15 @@
 // at 760 GOP pixels that is ~7 px per module, and the panel doubles it, so a
 // photograph still resolves every module.
 //
-#define QR_CHUNK_BYTES   1000U
-#define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 6U)
-#define QR_REGION_PX     1200U
+//
+// QR version 40 at EC level L holds 2953 payload bytes, so the usual log
+// (2.9 KB at driver entry) fits in a single code.  One frame means the panel
+// stops blinking and one photograph is enough; the tail is still capped so a
+// longer log degrades to two or three frames instead of failing.
+//
+#define QR_CHUNK_BYTES   2900U
+#define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 3U)
+#define QR_REGION_PX     1400U
 
 //
 // The console proves this address is the panel: FrameBufferSerialPortLib
@@ -238,7 +244,7 @@ DrawFrame (
 // interrupt, so the frames are cycled synchronously instead.
 //
 #define QR_FRAMES_PER_ROUND  8
-#define QR_FRAME_DELAY_US    (1500 * 1000)
+#define QR_FRAME_DELAY_US    (3000 * 1000)
 
 STATIC
 VOID

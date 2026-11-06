@@ -87,7 +87,7 @@
   # 60 of the 71 rows on screen and pushed the interesting part off the bottom.
   #
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x02
-  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000006
+  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000002
 
 [LibraryClasses]
   #
