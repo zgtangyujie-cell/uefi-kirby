@@ -47,6 +47,29 @@ fi
 mkdir -p Binaries
 cp -r "$ROOT/Binaries/kirby" Binaries/
 
+#
+# UniXNU required integration
+# (unixnu.com/zh/porting/uefi-firmware#required-integration).
+#
+# UniXNU publishes its package roots as {tree}/package and
+# {tree}/drivers/DarwinBoot, so PACKAGES_PATH is what has to carry them -- the
+# official build does exactly that and never copies packages around.  Appended,
+# never replaced: WORKSPACE still has to resolve MdePkg and the Mu packages.
+#
+UNIXNU_URL=${UNIXNU_URL:-https://github.com/UniXNU/UniXNU.git}
+UNIXNU_COMMIT=${UNIXNU_COMMIT:-13e5973748a8447cbb90520c9a2dd5e65e272435}
+
+if [ ! -d "$WORK/unixnu/.git" ]; then
+  log "cloning UniXNU"
+  git clone "$UNIXNU_URL" "$WORK/unixnu"
+fi
+log "checking out UniXNU $UNIXNU_COMMIT"
+git -C "$WORK/unixnu" fetch --depth 1 origin "$UNIXNU_COMMIT" 2>/dev/null || git -C "$WORK/unixnu" fetch origin
+git -C "$WORK/unixnu" checkout -f "$UNIXNU_COMMIT"
+
+export PACKAGES_PATH="$WORK/unixnu/package:$WORK/unixnu/drivers/DarwinBoot${PACKAGES_PATH:+:$PACKAGES_PATH}"
+log "PACKAGES_PATH=$PACKAGES_PATH"
+
 log "regenerating the patched vendor drivers"
 python3 "$ROOT/tools/apply_binary_patches.py" "$WORK/uefi"
 

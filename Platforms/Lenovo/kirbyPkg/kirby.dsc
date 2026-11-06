@@ -105,6 +105,13 @@
   #
   ConfigurationMapLib|kirbyPkg/Library/ConfigurationMapLib/ConfigurationMapLib.inf
 
+  #
+  # UniXNU required integration: the shared drivers ask for these two by name
+  # (unixnu.com/zh/porting/uefi-firmware#required-integration).
+  #
+  HobLib|MdePkg/Library/DxeHobLib/DxeHobLib.inf
+  FdtLib|MdePkg/Library/BaseFdtLib/BaseFdtLib.inf
+
 [Components]
   #
   # Bring-up diagnostics
@@ -117,6 +124,22 @@
   # Debug log as QR codes on the panel (no menu, no input, no host tool)
   #
   kirbyPkg/Drivers/QrLogDxe/QrLogDxe.inf
+
+  #
+  # UniXNU + DarwinBoot, the official required-integration list.
+  # Matching FV lines live in Include/DXE.inc, dispatch order in
+  # Include/APRIORI.inc; the package roots arrive through PACKAGES_PATH, which
+  # scripts/build.sh appends to.
+  #
+  # UniXNU.inf is a UEFI_APPLICATION: it belongs here (so it is compiled) and in
+  # DXE.inc (so it lands in the firmware volume).  It must NOT go into
+  # APRIORI.inc -- APRIORI only accepts drivers.
+  #
+  MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
+  UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf
+  UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
+  UniXNUPkg/Application/UniXNU/UniXNU.inf
+  DarwinBootPkg/Driver/DarwinBoot.inf
 
   #
   # ACPI Tables

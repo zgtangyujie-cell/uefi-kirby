@@ -101,6 +101,15 @@ APRIORI DXE {
 
   INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
 
+  #
+  # UniXNU payload chain, dependency order matters here:
+  #   UniXNURamDiskDxe turns the Mu FDT handover (/chosen/linux,initrd-start and
+  #     linux,initrd-end) into a read-only block device,
+  #   DiskIoDxe gives every filesystem driver block access to it.
+  #
+  INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
+  INF UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf
+
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/SdccDxe/SdccDxe.inf
   # UFSDxe is back. It was removed from the image for one round as a
@@ -110,6 +119,13 @@ APRIORI DXE {
   # INF Binaries/kirby/QcomPkg/Drivers/UFSDxe/UFSDxe.inf
 
   INF FatPkg/EnhancedFatDxe/Fat.inf
+
+  #
+  # Resident before the boot option runs: UniXNUDxe registers UniXNU.efi as
+  # BootOrder[0], DarwinBoot provides gUniXNULoaderProtocolGuid.
+  #
+  INF UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
+  INF DarwinBootPkg/Driver/DarwinBoot.inf
 
   # 同 SCM 链一起撤回，见上文 821cacd / 2b1704a 实测。
   # INF Binaries/kirby/QcomPkg/Drivers/TzDxe/TzDxeLA.inf

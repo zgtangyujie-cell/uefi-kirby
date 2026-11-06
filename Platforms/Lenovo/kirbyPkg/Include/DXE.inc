@@ -59,6 +59,20 @@
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
 
+  #
+  # UniXNU required integration
+  # (unixnu.com/zh/porting/uefi-firmware#required-integration).
+  # FV order does not decide dispatch -- DxeCore uses the depex plus
+  # APRIORI.inc -- but keep the payload chain readable: UniXNURamDiskDxe
+  # publishes the initrd block device, DiskIoDxe wraps it, Fat publishes the
+  # volume UniXNU reads \EFI\UniXNU\unixnu.toml from.
+  #
+  INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
+  INF UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf
+  INF UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
+  INF UniXNUPkg/Application/UniXNU/UniXNU.inf
+  INF DarwinBootPkg/Driver/DarwinBoot.inf
+
   INF FatPkg/EnhancedFatDxe/Fat.inf
   INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
 
