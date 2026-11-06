@@ -170,10 +170,11 @@ APRIORI DXE {
   # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
   # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
   # INF Binaries/kirby/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
-  # ① 单变量恢复：只放开 ButtonsDxe，放在 QrLogDxe（末尾）之前调度。
-  # 原「SPMI→Clock→SMEM 死链」的判断是错的，见 tools/apply_binary_patches.py 的既有补丁。
-  # 位置对齐 giulia APRIORI.inc:89（UsbConfig 之后、Tsens 之前）。
-  INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
+  # 【单变量实验结论 2026-11-06 16:15，b8b90bc 实测】ButtonsDxe 依赖 TZ/QSEE
+  # （PMIC SDAM / PON），fastboot boot 下 SCM 不可用 → 自身 ASSERT_EFI_ERROR
+  # (ASSERT AutoGen.c +469, ERROR C9000002:V03000007)。同 SCM 三件套，退回。
+  # 见 DXE.inc 对应条目的完整记录。
+  # INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/TsensDxe/TsensDxe.inf
 

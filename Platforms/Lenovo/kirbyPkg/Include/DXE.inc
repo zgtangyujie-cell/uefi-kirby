@@ -129,11 +129,15 @@
   INF SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
 !endif
 
-  # ① 单变量恢复：只放开 ButtonsDxe，用静态二维码日志看它到底缺哪个协议。
-  # 原「SPMI→Clock→SMEM 死链」的判断是错的：tools/apply_binary_patches.py
-  # 已有 SPMIDxe(0x154C) / PmicDxeLa(0x8AA0,0x22B84) / ButtonsDxe(0x3E70,0x3E74) 补丁。
-  # giulia 同 SoC 在 DXE.inc:80 / APRIORI.inc:89 启用它（2026-11-06 核实）。
-  INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
+  # 【单变量实验结论 2026-11-06 16:15，b8b90bc 实测】放开 ButtonsDxe 后它自己撞
+  # ASSERT_EFI_ERROR (Status = Not Found)，屏幕 ERROR 行
+  # C9000002:V03000007 TO 5BD181DB-0487-4F1A-AE73-820E165611B3
+  # （该 GUID 正是 ButtonsDxe.inf 的 FILE_GUID），ASSERT AutoGen.c +469。
+  # 原因同 SCM 三件套：ButtonsDxe 运行时依赖 TZ/QSEE（PMIC SDAM / PON），
+  # fastboot boot 路径下不可用；二进制自带 ASSERT，改 DebugLib 宏够不着。
+  # apply_binary_patches.py 只有电源键→ENTER 两处补丁，绕不过这个 ASSERT。
+  # 按官方第 6 步「仅选择必需输入已满足的实现」退回。
+  # INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ChargerExDxe/ChargerExDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
