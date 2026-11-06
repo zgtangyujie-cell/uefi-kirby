@@ -96,16 +96,24 @@ PaintPanel (
   UINT32  *Panel = (UINT32 *)(UINTN)KIRBY_PANEL_BASE;
   UINTN   OriginX = (KIRBY_PANEL_W - Size) / 2;
   //
-  // Bottom of the panel, not the middle: the console starts at row 0 and grows
-  // down, so anything it prints after this driver returns lands above the code
-  // instead of across it.  The panel is 2120 tall, the code 680, and the boot
-  // log rarely passes 40 lines of 36 px.
+  // Centre it, and clear the whole panel first.  Centred is the framing that
+  // actually decoded from a phone photograph; anchoring it at the bottom
+  // pushed it into the corner where the camera is furthest away and least
+  // sharp.  Clearing the rest removes the console text that would otherwise
+  // bleed through and confuse the decoder.
   //
-  UINTN   OriginY = KIRBY_PANEL_H - Size - 100;
+  UINTN   OriginY = (KIRBY_PANEL_H - Size) / 2;
   UINTN   Row;
   UINTN   Col;
 
-  /* White quiet zone first -- decoders need at least four modules of it. */
+  for (Row = 0; Row < KIRBY_PANEL_H; Row++) {
+    UINT32 *Line = (UINT32 *)(UINTN)KIRBY_PANEL_BASE + Row * KIRBY_PANEL_W;
+    for (Col = 0; Col < KIRBY_PANEL_W; Col++) {
+      Line[Col] = 0;
+    }
+  }
+
+  /* White quiet zone next -- decoders need at least four modules of it. */
   for (Row = 0; Row < Size + QR_QUIET_MARGIN * 2; Row++) {
     if ((OriginY < QR_QUIET_MARGIN) || ((OriginY + Row - QR_QUIET_MARGIN) >= KIRBY_PANEL_H)) {
       continue;
