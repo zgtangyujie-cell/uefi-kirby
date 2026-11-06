@@ -52,9 +52,16 @@ jobs:
           echo "building $TARGET"
 
       - name: Install build dependencies
+        timeout-minutes: 12
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          set -eux
+          # Run 96 sat inside `apt-get update` for over 17 minutes while the
+          # whole build was still pending behind it.  The default acquire
+          # timeout is far too generous for a stalled Ubuntu mirror, so cap it
+          # and let a bad mirror fail fast instead of hanging the job.
+          APT="sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          $APT update
+          $APT install -y --no-install-recommends \
             build-essential git python3 python3-venv \
             clang llvm lld uuid-dev nasm \
             gcc-aarch64-linux-gnu acpica-tools device-tree-compiler \
