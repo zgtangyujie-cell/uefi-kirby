@@ -74,8 +74,8 @@
 // is a different buffer entirely.
 //
 #define KIRBY_PANEL_BASE 0xD5100000ULL
-#define KIRBY_PANEL_W    1600U
-#define KIRBY_PANEL_H    2560U
+#define KIRBY_PANEL_W    3000U
+#define KIRBY_PANEL_H    2120U
 
 STATIC EFI_GRAPHICS_OUTPUT_PROTOCOL  *mGop;
 STATIC UINTN                          mWidth;
