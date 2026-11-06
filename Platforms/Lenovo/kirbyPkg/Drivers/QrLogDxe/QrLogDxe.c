@@ -50,7 +50,15 @@
 // -- and the modules came out too small to decode from a photograph.  At 760
 // bytes the code is around version 25 and every module is comfortably wide.
 //
-#define QR_CHUNK_BYTES   760U
+//
+// 760 overflowed the encoder at the requested version:
+//     Suggesting version 19 / Suggested version 19 is larger than requested 18
+//     QRencode complete. Code = Invalid Parameter
+// It only ever worked because the early logs were 579 bytes.  KLOG now holds
+// ~18 KB, so the tail chunk is a full-length slice and has to fit version 18.
+// 600 bytes leaves headroom at EC level L.
+//
+#define QR_CHUNK_BYTES   600U
 
 //
 // Fixed version with an integer module pitch, and as few modules as the
@@ -74,7 +82,15 @@
 // what we see.  Gop->Mode->FrameBufferBase reports 0x1B000000 instead, which
 // is a different buffer entirely.
 //
-#define KIRBY_PANEL_BASE 0xD5100000ULL
+//
+// NEVER hard-code the panel address.  GOP reported 0xD5100000 while the
+// firmware was small, but once the UniXNU modules were linked in SimpleFb hands
+// out 0xB5100000 instead:
+//     QrLog: gop 1600x2560 stride 1600 fb B5100000 size 16384000
+// Painting 0xD5100000 then goes into unrelated memory and the photograph shows
+// nothing but console text.  Take the base from GOP on every use.
+//
+#define KIRBY_PANEL_BASE  (mGop->Mode->FrameBufferBase)
 #define KIRBY_PANEL_W    1600U
 #define KIRBY_PANEL_H    2560U
 
