@@ -90,6 +90,31 @@ if [ -f "$UNIXNU_DXE_C" ]; then
   log "promoted UniXNUDxe DEBUG_INFO lines to DEBUG_ERROR"
 fi
 
+#
+# Diagnostic only: SetVariable("Boot0000") returns EFI_INVALID_PARAMETER and the
+# two candidate causes are indistinguishable from the outside -- OptionSize == 0
+# (DataSize 0 with non-zero attributes is an invalid delete) versus this
+# memory-only variable store rejecting EFI_VARIABLE_NON_VOLATILE.  Print both.
+#
+python3 - "$UNIXNU_DXE_C" <<'DXEEOF'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1])
+if not p.is_file():
+    print("skip: %s not present" % p)
+    raise SystemExit(0)
+text = p.read_text(encoding="utf-8")
+needle = "    Status = gRT->SetVariable (Name, &gEfiGlobalVariableGuid, OPTION_ATTRIBUTES, OptionSize, Option);"
+probe = ('    DEBUG ((DEBUG_ERROR, "UniXNUDxe: write %s attr=0x%x size=%u\\n", '
+         'Name, (UINT32)OPTION_ATTRIBUTES, (UINT32)OptionSize));\n')
+if needle not in text:
+    print("SetVariable needle not found")
+elif probe in text:
+    print("already probed")
+else:
+    p.write_text(text.replace(needle, probe + needle, 1), encoding="utf-8")
+    print("added SetVariable probe")
+DXEEOF
+
 # stuart does not read PACKAGES_PATH from the environment: kirbyPkg's
 # DeviceBuild.GetPackagesPath() is the list it actually uses, and that is where
 # the two UniXNU roots are appended.  Exported here only for documentation.
