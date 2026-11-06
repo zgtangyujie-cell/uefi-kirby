@@ -271,20 +271,10 @@ DrawFrame (
 //
 // The timer interrupt never fires on this board: SetTimer returns Success and
 // the callback is never entered (BDS's own menu timeout is dead for the same
-// reason).  gBS->Stall spins on the architectural counter and needs no
-// interrupt, so the frames are cycled synchronously instead.
+// reason).  Nothing rotates any more -- QrLogDxeEntry paints a single frame
+// with DrawFrame() and returns to BDS, so the old ShowRound()/6 s Stall pair
+// is gone.  Keep this note: it is why no EVT_TIMER is used anywhere here.
 //
-#define QR_FRAME_DELAY_US    (6000 * 1000)
-
-STATIC
-VOID
-ShowRound (
-  VOID
-  )
-{
-  DrawFrame ();
-  gBS->Stall (QR_FRAME_DELAY_US);
-}
 
 
 EFI_STATUS
