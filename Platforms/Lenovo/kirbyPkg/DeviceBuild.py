@@ -129,6 +129,21 @@ class PlatformBuilder (UefiBuilder, BuildSettingsManager):
         for a in CommonPlatform.PackagesPath:
             result.append(a)
 
+        #
+        # UniXNU required integration
+        # (unixnu.com/zh/porting/uefi-firmware#required-integration).
+        #
+        # The official build puts {tree}/package and {tree}/drivers/DarwinBoot
+        # on PACKAGES_PATH.  stuart does NOT inherit the shell's PACKAGES_PATH
+        # -- this list is what it uses -- so exporting it from scripts/build.sh
+        # had no effect, and OverrideValidation died with "Failed to convert
+        # Edk2Relative Path to an Absolute Path" on the first UniXNU module.
+        # scripts/build.sh clones UniXNU to <work>/unixnu.
+        #
+        unixnu = os.path.normpath (os.path.join (self.GetWorkspaceRoot (), "..", "unixnu"))
+        result.append (os.path.join (unixnu, "package"))
+        result.append (os.path.join (unixnu, "drivers", "DarwinBoot"))
+
         return result
 
     def GetActiveScopes (self):

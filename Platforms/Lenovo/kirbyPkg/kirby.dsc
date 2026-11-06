@@ -89,6 +89,14 @@
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x02
   gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000002
 
+[Packages]
+  #
+  # UniXNU required integration.  DarwinBoot.inf consumes
+  # gUniXNULoaderProtocolGuid from this package; the roots themselves are added
+  # to the search path by kirbyPkg/DeviceBuild.py GetPackagesPath().
+  #
+  UniXNUPkg/UniXNUPkg.dec
+
 [LibraryClasses]
   #
   # Memory Libraries

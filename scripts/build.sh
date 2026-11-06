@@ -67,8 +67,10 @@ log "checking out UniXNU $UNIXNU_COMMIT"
 git -C "$WORK/unixnu" fetch --depth 1 origin "$UNIXNU_COMMIT" 2>/dev/null || git -C "$WORK/unixnu" fetch origin
 git -C "$WORK/unixnu" checkout -f "$UNIXNU_COMMIT"
 
-export PACKAGES_PATH="$WORK/unixnu/package:$WORK/unixnu/drivers/DarwinBoot${PACKAGES_PATH:+:$PACKAGES_PATH}"
-log "PACKAGES_PATH=$PACKAGES_PATH"
+# stuart does not read PACKAGES_PATH from the environment: kirbyPkg's
+# DeviceBuild.GetPackagesPath() is the list it actually uses, and that is where
+# the two UniXNU roots are appended.  Exported here only for documentation.
+log "UniXNU tree: $WORK/unixnu"
 
 log "regenerating the patched vendor drivers"
 python3 "$ROOT/tools/apply_binary_patches.py" "$WORK/uefi"
