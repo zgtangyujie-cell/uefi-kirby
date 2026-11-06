@@ -28,6 +28,7 @@
 #include <Library/QrEncoderLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
+#include <Guid/EventGroup.h>
 #include <Protocol/GraphicsOutput.h>
 
 //
@@ -243,15 +244,38 @@ DrawFrame (
   mFrame = (mFrame + 1) % Frames;
 }
 
+//
+// The timer interrupt never fires on this board: SetTimer returns Success and
+// the callback is never entered (BDS's own menu timeout is dead for the same
+// reason).  gBS->Stall spins on the architectural counter and needs no
+// interrupt, so the frames are cycled synchronously instead.
+//
+#define QR_FRAMES_PER_ROUND  8
+#define QR_FRAME_DELAY_US    (1500 * 1000)
+
+STATIC
+VOID
+ShowRound (
+  VOID
+  )
+{
+  UINTN  Index;
+
+  for (Index = 0; Index < QR_FRAMES_PER_ROUND; Index++) {
+    DrawFrame ();
+    gBS->Stall (QR_FRAME_DELAY_US);
+  }
+}
+
 STATIC
 VOID
 EFIAPI
-OnTimer (
+OnReadyToBoot (
   IN EFI_EVENT  Event,
   IN VOID       *Context
   )
 {
-  DrawFrame ();
+  ShowRound ();
 }
 
 EFI_STATUS
@@ -297,13 +321,26 @@ QrLogDxeEntry (
     return EFI_SUCCESS;
   }
 
-  Status = gBS->CreateEvent (EVT_TIMER, TPL_CALLBACK, OnTimer, NULL, &Timer);
-  if (EFI_ERROR (Status)) {
-    return EFI_SUCCESS;
-  }
+  //
+  // Round one: right here, while the dispatch is still paused, so nothing can
+  // paint over the codes.
+  //
+  ShowRound ();
 
-  Status = gBS->SetTimer (Timer, TimerPeriodic, 2 * 1000 * 1000);
-  DEBUG ((DEBUG_ERROR, "QrLog: timer %r\n", Status));
+  //
+  // Round two, if BDS ever reaches ReadyToBoot: the interesting Bds[..] lines
+  // are printed after this driver returns, and this is the only later hook
+  // that does not need a timer interrupt.
+  //
+  Status = gBS->CreateEventEx (
+                  EVT_NOTIFY_SIGNAL,
+                  TPL_CALLBACK,
+                  OnReadyToBoot,
+                  NULL,
+                  &gEfiEventReadyToBootGuid,
+                  &Timer
+                  );
+  DEBUG ((DEBUG_ERROR, "QrLog: ready-to-boot hook %r\n", Status));
 
   return EFI_SUCCESS;
 }
