@@ -14,7 +14,7 @@ requires_kernel_header = true
 # UEFI FD Configs
 #
 [uefi_fd]
-base = 0xA7100000
+base = 0xF3800000
 # 3 MB (0x300000) is exactly full for the RELEASE build, and a DEBUG build needs
 # room for the extra debug strings / assertions, so give the FD 4 MB.
 size = 0x400000
