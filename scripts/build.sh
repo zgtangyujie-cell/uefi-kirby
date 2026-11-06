@@ -585,6 +585,20 @@ if [ "$(uname -s)" = "Linux" ]; then
 fi
 "$WORK/.venv/bin/python" build_uefi.py -d kirby -r "$TARGET"
 
+#
+# Fat.efi is the one module whose absence looks exactly like a rejected volume:
+# BlockIo and DiskIo both bind, SimpleFileSystem never appears, and Fat prints
+# nothing when it declines a device.  FVMAIN reports 99% full, so check the GUID
+# cross-reference instead of guessing which of the two it is.
+#
+GUIDXREF="Build/kirbyPkg/${TARGET}_CLANGPDB/FV/Guid.xref"
+if [ -f "$GUIDXREF" ]; then
+  log "Fat.efi (961578FE-B6B7-44C3-AF35-6BC705CD2B1F) in Guid.xref:"
+  grep -i 961578FE "$GUIDXREF" || echo "  Fat.efi NOT PRESENT in the firmware volume"
+else
+  log "no Guid.xref at $GUIDXREF"
+fi
+
 OUT=$(ls -1 Mu-kirby*.img 2>/dev/null | head -1 || true)
 if [ -z "$OUT" ]; then
   echo "build finished but no Mu-kirby*.img was produced" >&2
