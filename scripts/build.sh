@@ -360,6 +360,12 @@ import pathlib
 targets = [
     "MdeModulePkg/Application/UiApp/FrontPage.c",
     "MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenu.c",
+    # BdsEntry itself clears the screen right before it hands over to the boot
+    # manager, which is what wipes every DEBUG line emitted by drivers that ran
+    # earlier (VariableRuntimeDxe, UniXNUDxe...).  Without this the screen only
+    # ever shows "[Bds] Connect ConIn failed", and "driver never dispatched"
+    # cannot be told apart from "driver dispatched and failed".
+    "MdeModulePkg/Universal/BdsDxe/BdsEntry.c",
 ]
 needle = "gST->ConOut->ClearScreen (gST->ConOut);"
 for rel in targets:

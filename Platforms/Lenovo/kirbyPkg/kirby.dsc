@@ -82,12 +82,17 @@
   # exactly that on this board -- and the dead loop then stops the boot at a
   # driver that DxeCore would otherwise have unloaded and moved past.
   #
-  # PcdDebugPrintErrorLevel keeps ERROR|WARN|LOAD only.  The default level makes
-  # DxeCore print one "Memory Allocation" line per pool allocation, which filled
-  # 60 of the 71 rows on screen and pushed the interesting part off the bottom.
+  # PcdDebugPrintErrorLevel: ERROR|WARN|INFO for the UniXNU integration pass.
+  # 0x80000002 (ERROR|WARN) hid every UniXNUDxe line: that driver logs success
+  # at DEBUG_INFO, and only its two failure paths use DEBUG_ERROR.  With no
+  # output at all there was no way to tell "never dispatched" (depex waiting on
+  # the variable protocols) from "dispatched and failed".  0x40 adds INFO.
+  # Put it back once the boot option registers -- the default level prints one
+  # "Memory Allocation" line per pool allocation and pushes the interesting
+  # part off the screen.
   #
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x02
-  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000002
+  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000042
 
 [Packages]
   #
