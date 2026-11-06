@@ -62,9 +62,11 @@
 //
 #define QR_VERSION       18U
 #define QR_MODULES       85U
-#define QR_SCALE         11U
-#define QR_QUIET_MARGIN  72U
-#define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 4U)
+#define QR_SCALE         8U
+#define QR_QUIET_MARGIN  64U
+/* One frame only: a code that does not change is a code that can be
+   photographed at leisure.  The tail is what matters after a hang. */
+#define QR_TAIL_BYTES    (QR_CHUNK_BYTES)
 #define QR_REGION_PX     (QR_MODULES * QR_SCALE)
 
 //
@@ -267,8 +269,7 @@ DrawFrame (
 // reason).  gBS->Stall spins on the architectural counter and needs no
 // interrupt, so the frames are cycled synchronously instead.
 //
-#define QR_FRAMES_PER_ROUND  8
-#define QR_FRAME_DELAY_US    (3000 * 1000)
+#define QR_FRAME_DELAY_US    (6000 * 1000)
 
 STATIC
 VOID
@@ -276,12 +277,8 @@ ShowRound (
   VOID
   )
 {
-  UINTN  Index;
-
-  for (Index = 0; Index < QR_FRAMES_PER_ROUND; Index++) {
-    DrawFrame ();
-    gBS->Stall (QR_FRAME_DELAY_US);
-  }
+  DrawFrame ();
+  gBS->Stall (QR_FRAME_DELAY_US);
 }
 
 STATIC
