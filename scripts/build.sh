@@ -104,8 +104,22 @@ if not p.is_file():
     raise SystemExit(0)
 text = p.read_text(encoding="utf-8")
 needle = "    Status = gRT->SetVariable (Name, &gEfiGlobalVariableGuid, OPTION_ATTRIBUTES, OptionSize, Option);"
-probe = ('    DEBUG ((DEBUG_ERROR, "UniXNUDxe: write %s attr=0x%x size=%u\\n", '
-         'Name, (UINT32)OPTION_ATTRIBUTES, (UINT32)OptionSize));\n')
+probe = (
+    '    DEBUG ((DEBUG_ERROR, "UniXNUDxe: write %s attr=0x%x size=%u\\n", '
+    'Name, (UINT32)OPTION_ATTRIBUTES, (UINT32)OptionSize));\n'
+    '    {\n'
+    '      UINT32      KirbyProbeValue = 0x4B495242;\n'
+    '      EFI_STATUS  KirbyProbeStatus;\n'
+    '      KirbyProbeStatus = gRT->SetVariable (L"KirbyProbeNv", &gEfiGlobalVariableGuid,\n'
+    '                                           EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_NON_VOLATILE,\n'
+    '                                           sizeof (KirbyProbeValue), &KirbyProbeValue);\n'
+    '      DEBUG ((DEBUG_ERROR, "UniXNUDxe: probe nv=%r\\n", KirbyProbeStatus));\n'
+    '      KirbyProbeStatus = gRT->SetVariable (L"KirbyProbeBs", &gEfiGlobalVariableGuid,\n'
+    '                                           EFI_VARIABLE_BOOTSERVICE_ACCESS,\n'
+    '                                           sizeof (KirbyProbeValue), &KirbyProbeValue);\n'
+    '      DEBUG ((DEBUG_ERROR, "UniXNUDxe: probe bs=%r\\n", KirbyProbeStatus));\n'
+    '    }\n'
+)
 if needle not in text:
     print("SetVariable needle not found")
 elif probe in text:
