@@ -82,17 +82,15 @@
   # exactly that on this board -- and the dead loop then stops the boot at a
   # driver that DxeCore would otherwise have unloaded and moved past.
   #
-  # PcdDebugPrintErrorLevel: ERROR|WARN|INFO for the UniXNU integration pass.
-  # 0x80000002 (ERROR|WARN) hid every UniXNUDxe line: that driver logs success
-  # at DEBUG_INFO, and only its two failure paths use DEBUG_ERROR.  With no
-  # output at all there was no way to tell "never dispatched" (depex waiting on
-  # the variable protocols) from "dispatched and failed".  0x40 adds INFO.
-  # Put it back once the boot option registers -- the default level prints one
-  # "Memory Allocation" line per pool allocation and pushes the interesting
-  # part off the screen.
+  # PcdDebugPrintErrorLevel: ERROR|WARN only.
+  # The INFO pass did its job -- it proved DEBUG output reaches the panel -- but
+  # it also drowned KLOG in DXE core "Loading driver" lines, so the 600-byte QR
+  # slice held nothing but noise and never reached the UniXNU drivers.  Back to
+  # ERROR|WARN here; UniXNUDxe's own success line is promoted to DEBUG_ERROR in
+  # scripts/build.sh for the duration of this investigation.
   #
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x02
-  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000042
+  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000002
 
 [Packages]
   #

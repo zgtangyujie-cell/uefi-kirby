@@ -78,6 +78,18 @@ git -C "$WORK/unixnu" checkout -f "$UNIXNU_COMMIT"
 log "initialising the DarwinBoot submodule"
 git -C "$WORK/unixnu" submodule update --init drivers/DarwinBoot
 
+#
+# Diagnostic only.  With PcdDebugPrintErrorLevel back at ERROR|WARN, UniXNUDxe's
+# one and only success line ("Boot%04x first in BootOrder") is DEBUG_INFO and
+# would be invisible, so the QR capture could not tell "registered" from "never
+# dispatched".  Promote that file's lines to DEBUG_ERROR while investigating.
+#
+UNIXNU_DXE_C="$WORK/unixnu/package/UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.c"
+if [ -f "$UNIXNU_DXE_C" ]; then
+  sed -i 's/DEBUG ((DEBUG_INFO, "UniXNUDxe:/DEBUG ((DEBUG_ERROR, "UniXNUDxe:/g' "$UNIXNU_DXE_C"
+  log "promoted UniXNUDxe DEBUG_INFO lines to DEBUG_ERROR"
+fi
+
 # stuart does not read PACKAGES_PATH from the environment: kirbyPkg's
 # DeviceBuild.GetPackagesPath() is the list it actually uses, and that is where
 # the two UniXNU roots are appended.  Exported here only for documentation.
