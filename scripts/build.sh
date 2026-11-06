@@ -312,8 +312,25 @@ KirbyLogAppend (
   }
 
   Used = Header[1];
-  if (Used >= (KIRBY_LOG_MAX - KIRBY_LOG_HDR)) {
-    return;
+
+  //
+  // Keep the NEWEST bytes, not the oldest.  UniXNUDxe is dispatched late in
+  // APRIORI: with a plain "stop when full" buffer the 32 KiB fills during
+  // early DXE and every UniXNU line lands in the discarded tail -- exactly the
+  // part that has to be read.  When the write would overflow, drop the older
+  // half in one shift, so this costs one move per 16 KiB of output.
+  //
+  if (Used + Len > (KIRBY_LOG_MAX - KIRBY_LOG_HDR)) {
+    UINTN  Half = (KIRBY_LOG_MAX - KIRBY_LOG_HDR) / 2;
+    UINTN  Move;
+
+    if (Used > Half) {
+      Move = Used - Half;
+      for (Index = 0; Index < Half; Index++) {
+        Body[Index] = Body[Move + Index];
+      }
+      Used = Half;
+    }
   }
 
   for (Index = 0; (Index < Len) && ((Used + Index) < (KIRBY_LOG_MAX - KIRBY_LOG_HDR)); Index++) {

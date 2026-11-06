@@ -328,15 +328,26 @@ QrLogDxeEntry (
   // UniXNU required-integration drivers and the boot menu.  Revert this hunk
   // to restore the static-QR-only image if a QR capture is needed again.
   //
-  // Call DrawFrame() directly rather than ShowRound(): the latter stalls for
+  // Call DrawFrame() directly rather than ShowRound(): the latter stalled for
   // QR_FRAME_DELAY_US (6 s) to hold each rotating frame on screen, which is
-  // pointless for a single frame and would delay BDS for no reason.
+  // pointless for a single frame.
   //
   DrawFrame ();
   WriteBackInvalidateDataCacheRange (
     (VOID *)(UINTN)KIRBY_PANEL_BASE,
     (UINTN)KIRBY_PANEL_W * KIRBY_PANEL_H * 4
     );
+
+  //
+  // Hold here while a QR capture is needed.  UniXNUDxe is dispatched before
+  // this driver, so its lines are already in Log_Buffer; returning lets BDS
+  // scroll them off the panel and leaves only "Connect ConIn failed" visible.
+  // Flip this back to a plain return once the boot option registers -- the
+  // BDS-text build is the one to keep long term.
+  //
+  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
+    gBS->Stall (1000000);
+  }
 
   return EFI_SUCCESS;
 }
