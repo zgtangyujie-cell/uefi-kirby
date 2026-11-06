@@ -19,11 +19,11 @@
   INF MdeModulePkg/Core/RuntimeDxe/RuntimeDxe.inf
   INF MdeModulePkg/Universal/SecurityStubDxe/SecurityStubDxe.inf
 
-  # 恢复 SCM 链，依据同 SoC 的 giuliaPkg/Include/DXE.inc 第 12-14 行。
-  # 这三个驱动 Depex=TRUE / 排在 ChipInfo、Clock、SMEM 之前，不依赖 SMEM。
-  INF Binaries/kirby/QcomPkg/Drivers/ShmBridgeDxe/ShmBridgeDxeLA.inf
-  INF Binaries/kirby/QcomPkg/Drivers/TzDxe/ScmDxeCompat.inf
-  INF Binaries/kirby/QcomPkg/Drivers/TzDxe/TzDxeLA.inf
+  # SCM 三件套已撤回：821cacd / 2b1704a 实测都因 TZ/QSEE 不可用而
+  # 入口点返回 Not Found，撞厂商二进制自带的 ASSERT 死循环。见 APRIORI.inc。
+  # INF Binaries/kirby/QcomPkg/Drivers/ShmBridgeDxe/ShmBridgeDxeLA.inf
+  # INF Binaries/kirby/QcomPkg/Drivers/TzDxe/ScmDxeCompat.inf
+  # INF Binaries/kirby/QcomPkg/Drivers/TzDxe/TzDxeLA.inf
 
   INF MdeModulePkg/Universal/WatchdogTimerDxe/WatchdogTimer.inf
   INF MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf

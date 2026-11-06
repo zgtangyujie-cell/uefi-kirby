@@ -72,12 +72,15 @@ APRIORI DXE {
   # INF Binaries/kirby/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ICBDxe/ICBDxe.inf
-  # 恢复 SCM 链（依据 Mu-Silicium/Platforms/OnePlus/giuliaPkg/Include/APRIORI.inc
-  # 第 33-34 行，同 SM8650）。ScmDxeCompat 提供 SCM/SdI protocol，
-  # XhciPciEmulation 的 PrepareRfsProtection 要用；这一支 Depex=TRUE，不经 SMEM。
-  # 之前把「SMEM 无效」当万能理由连它一起摘掉，是 SCM Protocol Not Found 的真因。
-  INF Binaries/kirby/QcomPkg/Drivers/ShmBridgeDxe/ShmBridgeDxeLA.inf
-  INF Binaries/kirby/QcomPkg/Drivers/TzDxe/ScmDxeCompat.inf
+  # 撤回 SCM 三件套。821cacd / 2b1704a 两次实测都卡在
+  # ASSERT AutoGen.c:389: !EFI_ERROR (Status)，屏幕 ERROR 行是
+  # C8000002:V03000007 / C9000002:V03000007（SCM/TZ 调用失败）。
+  # 原因：这些驱动运行时依赖 TZ/QSEE，fastboot boot 路径下不可用，
+  # 入口点返回 EFI_NOT_FOUND；ASSERT 来自厂商预编译二进制自带的
+  # DebugLib/AutoGen，构建期改 DebugLib.h 源码够不着它。
+  # 不再改宏，改走 ButtonsDxe（按键 ConIn）+ 项目已有的 SPMI/PMIC 二进制补丁。
+  # INF Binaries/kirby/QcomPkg/Drivers/ShmBridgeDxe/ShmBridgeDxeLA.inf
+  # INF Binaries/kirby/QcomPkg/Drivers/TzDxe/ScmDxeCompat.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/TLMMDxe/TLMMDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
@@ -108,8 +111,8 @@ APRIORI DXE {
 
   INF FatPkg/EnhancedFatDxe/Fat.inf
 
-  # 同 giuliaPkg APRIORI 第 52 行：Fat 之后、VariableRuntimeDxe 之前。
-  INF Binaries/kirby/QcomPkg/Drivers/TzDxe/TzDxeLA.inf
+  # 同 SCM 链一起撤回，见上文 821cacd / 2b1704a 实测。
+  # INF Binaries/kirby/QcomPkg/Drivers/TzDxe/TzDxeLA.inf
 
   INF MdeModulePkg/Universal/Variable/RuntimeDxe/VariableRuntimeDxe.inf
 
