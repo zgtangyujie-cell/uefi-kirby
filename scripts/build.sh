@@ -35,6 +35,18 @@ git submodule update --init --recursive --depth 1
 log "installing the kirby device package"
 cp -r "$ROOT/Platforms/Lenovo/kirbyPkg" Platforms/Lenovo/
 cp    "$ROOT/Resources/Configs/kirby.toml" Resources/Configs/
+#
+# UniXNU payload.  build_uefi.py:331 passes "--ramdisk Resources/ramdisk" to
+# mkbootimg, so this file becomes the boot image's ramdisk field.  On a GKI
+# target that is the only way the payload can ride along with `fastboot boot`:
+# the boot partition itself has no ramdisk, and we never write vendor_boot.
+# UniXNURamDiskDxe then turns it into a read-only block device via the Mu FDT
+# initrd handover.
+#
+if [ -f "$ROOT/Resources/ramdisk" ]; then
+  cp "$ROOT/Resources/ramdisk" Resources/ramdisk
+  log "staged payload ramdisk ($(stat -c%s Resources/ramdisk) bytes)"
+fi
 # 用我们自己的最小设备树覆盖 kirby.dtb（ButtonsDxe 需要 /soc/buttons 节点）
 cp    "$ROOT/Resources/DTBs/kirby.dtb"     Resources/DTBs/
 if [ -f "$ROOT/Resources/DTBs/kirby-buttons.dts" ]; then
