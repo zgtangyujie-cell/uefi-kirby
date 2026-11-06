@@ -595,6 +595,8 @@ GUIDXREF="Build/kirbyPkg/${TARGET}_CLANGPDB/FV/Guid.xref"
 if [ -f "$GUIDXREF" ]; then
   log "Fat.efi (961578FE-B6B7-44C3-AF35-6BC705CD2B1F) in Guid.xref:"
   grep -i 961578FE "$GUIDXREF" || echo "  Fat.efi NOT PRESENT in the firmware volume"
+  log "EnglishDxe in Guid.xref:"
+  grep -i english "$GUIDXREF" || echo "  EnglishDxe NOT PRESENT in the firmware volume"
 else
   log "no Guid.xref at $GUIDXREF"
 fi

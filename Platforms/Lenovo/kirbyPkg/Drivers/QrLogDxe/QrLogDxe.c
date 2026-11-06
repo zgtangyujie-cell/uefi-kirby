@@ -121,6 +121,14 @@ STATIC EFI_GUID  mUnicodeCollationGuid = {
   0x1D85CD7F, 0xF43D, 0x11D2, { 0x9A, 0xC2, 0x00, 0x90, 0x27, 0x3F, 0xC1, 0x4D }
 };
 
+//
+// EFI_UNICODE_COLLATION2_PROTOCOL.  Fat's InitializeUnicodeCollationSupport
+// looks for this one first and only falls back to the v1 GUID above.
+//
+STATIC EFI_GUID  mUnicodeCollation2Guid = {
+  0xA4C751FC, 0x23AE, 0x4C3E, { 0x92, 0xE9, 0x49, 0x64, 0xCF, 0x63, 0xF3, 0xB6 }
+};
+
 STATIC
 VOID
 ReportProtocols (
@@ -176,6 +184,14 @@ ReportProtocols (
   Count   = 0;
   Status  = gBS->LocateHandleBuffer (ByProtocol, &mUnicodeCollationGuid, NULL, &Count, &Handles);
   DEBUG ((DEBUG_ERROR, "QrLog: UniColl=%u %r\n", (UINT32)Count, Status));
+  if (Handles != NULL) {
+    FreePool (Handles);
+  }
+
+  Handles = NULL;
+  Count   = 0;
+  Status  = gBS->LocateHandleBuffer (ByProtocol, &mUnicodeCollation2Guid, NULL, &Count, &Handles);
+  DEBUG ((DEBUG_ERROR, "QrLog: UniColl2=%u %r\n", (UINT32)Count, Status));
   if (Handles != NULL) {
     FreePool (Handles);
   }
