@@ -40,79 +40,19 @@
 #define KIRBY_LOG_HDR    8U
 
 //
-// QR payload per frame.  ~900 bytes lands around version 26 at EC level L,
-// which is 121 modules: about 11 pixels per module on a 1360 pixel square,
-// comfortably readable from a tablet photograph.
+// 600 bytes per frame lands around version 23 at EC level L (109 modules);
+// at 760 GOP pixels that is ~7 px per module, and the panel doubles it, so a
+// photograph still resolves every module.
 //
-#define QR_CHUNK_BYTES   900U
+#define QR_CHUNK_BYTES   600U
 #define QR_TAIL_BYTES    (QR_CHUNK_BYTES * 8U)
-#define QR_REGION_PX     1360U
+#define QR_REGION_PX     760U
 
 STATIC EFI_GRAPHICS_OUTPUT_PROTOCOL  *mGop;
-STATIC UINT8                         *mFb;
-STATIC UINTN                          mStride;
 STATIC UINTN                          mWidth;
 STATIC UINTN                          mHeight;
 STATIC UINTN                          mFrame;
-
-/*
-  The console shares this framebuffer, so the QR is repainted every tick and
-  simply wins once the boot stops printing.
-*/
-STATIC
-VOID
-FillRect (
-  IN UINTN                          X,
-  IN UINTN                          Y,
-  IN UINTN                          Width,
-  IN UINTN                          Height,
-  IN EFI_GRAPHICS_OUTPUT_BLT_PIXEL  *Color
-  )
-{
-  UINT32  Value;
-  UINT32  *Line;
-  UINTN   Row;
-  UINTN   Col;
-
-  Value = *(UINT32 *)Color;
-
-  for (Row = 0; Row < Height; Row++) {
-    if ((Y + Row) >= mHeight) {
-      break;
-    }
-
-    Line = (UINT32 *)(mFb + (Y + Row) * mStride * 4) + X;
-    for (Col = 0; Col < Width; Col++) {
-      if ((X + Col) >= mWidth) {
-        break;
-      }
-
-      Line[Col] = Value;
-    }
-  }
-}
-
-STATIC
-VOID
-PaintQr (
-  IN EFI_GRAPHICS_OUTPUT_BLT_PIXEL  *Bitmap,
-  IN UINTN                          Size,
-  IN UINTN                          OriginX,
-  IN UINTN                          OriginY
-  )
-{
-  UINT32  *Line;
-  UINTN   Row;
-
-  for (Row = 0; Row < Size; Row++) {
-    if ((OriginY + Row) >= mHeight) {
-      break;
-    }
-
-    Line = (UINT32 *)(mFb + (OriginY + Row) * mStride * 4) + OriginX;
-    CopyMem (Line, Bitmap + Row * Size, Size * 4);
-  }
-}
+STATIC BOOLEAN                        mReported;
 
 STATIC
 VOID
@@ -189,14 +129,36 @@ DrawFrame (
              &Bitmap
              );
   if (EFI_ERROR (Status) || (Bitmap == NULL)) {
+    DEBUG ((DEBUG_ERROR, "QrLog: encode frame %u failed: %r\n", (UINT32)mFrame, Status));
     return;
   }
 
   OriginX = (mWidth  > QR_REGION_PX) ? (mWidth  - QR_REGION_PX) / 2 : 0;
   OriginY = (mHeight > QR_REGION_PX) ? (mHeight - QR_REGION_PX) / 2 : 0;
 
-  FillRect (OriginX, OriginY, QR_REGION_PX, QR_REGION_PX, &White);
-  PaintQr (Bitmap, QR_REGION_PX, OriginX, OriginY);
+  if (!mReported) {
+    mReported = TRUE;
+    DEBUG ((
+      DEBUG_ERROR,
+      "QrLog: log %u bytes, %u frames, first chunk %u bytes\n",
+      (UINT32)Used,
+      (UINT32)Frames,
+      (UINT32)Length
+      ));
+  }
+
+  Status = mGop->Blt (
+                    mGop,
+                    Bitmap,
+                    EfiBltBufferToVideo,
+                    0,
+                    0,
+                    OriginX,
+                    OriginY,
+                    QR_REGION_PX,
+                    QR_REGION_PX,
+                    0
+                    );
 
   /* One white square per frame at the bottom edge, current one highlighted. */
   {
@@ -212,20 +174,20 @@ DrawFrame (
 
     Start = (mWidth - (Total * (CellW + Gap))) / 2;
     for (Index = 0; Index < Total; Index++) {
-      FillRect (
-               Start + Index * (CellW + Gap),
-               mHeight - 40,
-               CellW,
-               20,
-               (Index == (mFrame % Total)) ? &White : &Black
-               );
+      mGop->Blt (
+                 mGop,
+                 (Index == (mFrame % Total)) ? &White : &Black,
+                 EfiBltVideoFill,
+                 0,
+                 0,
+                 Start + Index * (CellW + Gap),
+                 mHeight - 40,
+                 CellW,
+                 20,
+                 0
+                 );
     }
   }
-
-  WriteBackInvalidateDataCacheRange (
-    (VOID *)(mFb + OriginY * mStride * 4),
-    QR_REGION_PX * mStride * 4
-    );
 
   FreePool (Bitmap);
 
@@ -253,27 +215,35 @@ QrLogDxeEntry (
   EFI_STATUS  Status;
   EFI_EVENT   Timer;
 
-  mGop   = NULL;
-  mFrame = 0;
+  mGop      = NULL;
+  mFrame    = 0;
+  mReported = FALSE;
 
   Status = gBS->LocateProtocol (&gEfiGraphicsOutputProtocolGuid, NULL, (VOID **)&mGop);
   if (EFI_ERROR (Status) || (mGop == NULL)) {
     return EFI_SUCCESS;
   }
 
-  mFb     = (UINT8 *)(UINTN)mGop->Mode->FrameBufferBase;
-  mStride = mGop->Mode->Info->PixelsPerScanLine;
   //
-  // scripts/build.sh patches SimpleFb so the GOP *reports* half the panel
-  // (800x1280) while PixelsPerScanLine stays at the real 1600, which is how
-  // the console gets 2x characters.  The QR is painted into the real panel,
-  // so take the width from the stride and the height from the buffer size --
-  // using Info->HorizontalResolution would clamp us to 800 and then bail out.
+  // Blt speaks GOP coordinates, and scripts/build.sh deliberately makes those
+  // half the panel (800x1280) so the console gets 2x characters.  The BDS menu
+  // draws through the same coordinates and lands correctly, so the QR does too.
   //
-  mWidth  = mStride;
-  mHeight = (mStride == 0) ? 0 : (mGop->Mode->FrameBufferSize / (mStride * 4U));
+  mWidth  = mGop->Mode->Info->HorizontalResolution;
+  mHeight = mGop->Mode->Info->VerticalResolution;
 
-  if ((mFb == NULL) || (mStride < mWidth) || (mWidth < QR_REGION_PX) || (mHeight < QR_REGION_PX)) {
+  DEBUG ((
+    DEBUG_ERROR,
+    "QrLog: gop %ux%u stride %u fb %lx size %u\n",
+    (UINT32)mWidth,
+    (UINT32)mHeight,
+    (UINT32)mGop->Mode->Info->PixelsPerScanLine,
+    (UINT64)mGop->Mode->FrameBufferBase,
+    (UINT32)mGop->Mode->FrameBufferSize
+    ));
+
+  if ((mWidth < QR_REGION_PX) || (mHeight < QR_REGION_PX)) {
+    DEBUG ((DEBUG_ERROR, "QrLog: gop too small for %u px QR\n", (UINT32)QR_REGION_PX));
     return EFI_SUCCESS;
   }
 
