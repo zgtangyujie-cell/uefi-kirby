@@ -28,7 +28,6 @@
 #include <Library/QrEncoderLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
-#include <Guid/EventGroup.h>
 #include <Protocol/GraphicsOutput.h>
 
 //
@@ -295,16 +294,6 @@ ShowRound (
   gBS->Stall (QR_FRAME_DELAY_US);
 }
 
-STATIC
-VOID
-EFIAPI
-OnReadyToBoot (
-  IN EFI_EVENT  Event,
-  IN VOID       *Context
-  )
-{
-  ShowRound ();
-}
 
 EFI_STATUS
 EFIAPI
@@ -314,7 +303,6 @@ QrLogDxeEntry (
   )
 {
   EFI_STATUS  Status;
-  EFI_EVENT   Timer;
 
   mGop      = NULL;
   mFrame    = 0;
@@ -327,9 +315,8 @@ QrLogDxeEntry (
   }
 
   //
-  // Blt speaks GOP coordinates, and scripts/build.sh deliberately makes those
-  // half the panel (800x1280) so the console gets 2x characters.  The BDS menu
-  // draws through the same coordinates and lands correctly, so the QR does too.
+  // Diagnostic only: report what the GOP actually says, so a photograph of the
+  // console can be checked against the geometry this driver paints with.
   //
   mWidth  = mGop->Mode->Info->HorizontalResolution;
   mHeight = mGop->Mode->Info->VerticalResolution;
@@ -350,24 +337,18 @@ QrLogDxeEntry (
   }
 
   //
-  // Round one: right here, while the dispatch is still paused, so nothing can
-  // paint over the codes.
-  //
-  ShowRound ();
-
-  //
-  // Round two, if BDS ever reaches ReadyToBoot: the interesting Bds[..] lines
-  // are printed after this driver returns, and this is the only later hook
-  // that does not need a timer interrupt.
-  //
-  //
   // Everything BDS draws -- its menu background included -- is painted with
   // GOP fills straight after this driver returns, and none of the ClearScreen
   // hooks can stop that.  Staying here keeps the code on the panel and freezes
   // the boot at the last driver: acceptable for a bring-up image whose only
   // job right now is to hand back an exact log.
   //
-  for (;;) {
+  //
+  // Bounded rather than `for (;;)`: the firmware never leaves this loop in
+  // practice, but a constant bound keeps the compiler from calling the return
+  // below unreachable.
+  //
+  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
     ShowRound ();
     WriteBackInvalidateDataCacheRange (
       (VOID *)(UINTN)KIRBY_PANEL_BASE,
