@@ -72,10 +72,12 @@ APRIORI DXE {
   # INF Binaries/kirby/QcomPkg/Drivers/ClockDxe/ClockDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ICBDxe/ICBDxe.inf
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/ShmBridgeDxe/ShmBridgeDxeLA.inf
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/TzDxe/ScmDxeCompat.inf
+  # 恢复 SCM 链（依据 Mu-Silicium/Platforms/OnePlus/giuliaPkg/Include/APRIORI.inc
+  # 第 33-34 行，同 SM8650）。ScmDxeCompat 提供 SCM/SdI protocol，
+  # XhciPciEmulation 的 PrepareRfsProtection 要用；这一支 Depex=TRUE，不经 SMEM。
+  # 之前把「SMEM 无效」当万能理由连它一起摘掉，是 SCM Protocol Not Found 的真因。
+  INF Binaries/kirby/QcomPkg/Drivers/ShmBridgeDxe/ShmBridgeDxeLA.inf
+  INF Binaries/kirby/QcomPkg/Drivers/TzDxe/ScmDxeCompat.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/TLMMDxe/TLMMDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
@@ -106,8 +108,8 @@ APRIORI DXE {
 
   INF FatPkg/EnhancedFatDxe/Fat.inf
 
-  # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/TzDxe/TzDxeLA.inf
+  # 同 giuliaPkg APRIORI 第 52 行：Fat 之后、VariableRuntimeDxe 之前。
+  INF Binaries/kirby/QcomPkg/Drivers/TzDxe/TzDxeLA.inf
 
   INF MdeModulePkg/Universal/Variable/RuntimeDxe/VariableRuntimeDxe.inf
 
