@@ -111,6 +111,16 @@ STATIC BOOLEAN                        mTickReported;
 //   (c) Fat bound it and rejected the BPB.
 // Counting the three protocols separates them.
 //
+//
+// EFI_UNICODE_COLLATION_PROTOCOL.  Spelled out because the symbolic name is not
+// declared in any .dec this platform includes, so the build rejects it with
+// "Value of Protocol [gEfiUnicodeCollationProtocolGuid] is not found under
+// [Protocols] section".
+//
+STATIC CONST EFI_GUID  mUnicodeCollationGuid = {
+  0x1D85CD7F, 0xF43D, 0x11D2, { 0x9A, 0xC2, 0x00, 0x90, 0x27, 0x3F, 0xC1, 0x4D }
+};
+
 STATIC
 VOID
 ReportProtocols (
@@ -164,7 +174,7 @@ ReportProtocols (
   //
   Handles = NULL;
   Count   = 0;
-  Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiUnicodeCollationProtocolGuid, NULL, &Count, &Handles);
+  Status  = gBS->LocateHandleBuffer (ByProtocol, &mUnicodeCollationGuid, NULL, &Count, &Handles);
   DEBUG ((DEBUG_ERROR, "QrLog: UniColl=%u %r\n", (UINT32)Count, Status));
   if (Handles != NULL) {
     FreePool (Handles);
