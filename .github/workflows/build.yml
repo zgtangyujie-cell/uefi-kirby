@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: c7092239
+          ref: c70922394f64405065be6cf1832e127b726543c7
 
       # Resolve the target once. A dispatched run uses the chosen input; a push
       # uses DEBUG for now, because the firmware currently dies before BDS and
