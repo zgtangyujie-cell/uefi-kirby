@@ -96,6 +96,11 @@
   MemoryMapLib|kirbyPkg/Library/MemoryMapLib/MemoryMapLib.inf
 
   #
+  # QR encoder, used by QrLogDxe to put the debug log on screen
+  #
+  QrEncoderLib|MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf
+
+  #
   # QCOM Libraries
   #
   ConfigurationMapLib|kirbyPkg/Library/ConfigurationMapLib/ConfigurationMapLib.inf
@@ -107,6 +112,11 @@
   # 读 0x81D00000 的前几个字打到屏幕上，用来判断 SMEM 到底有没有被 ABL 建起来。
   # 见 Drivers/SmemProbeDxe/SmemProbeDxe.c 里的说明。
   kirbyPkg/Drivers/SmemProbeDxe/SmemProbeDxe.inf
+
+  #
+  # Debug log as QR codes on the panel (no menu, no input, no host tool)
+  #
+  kirbyPkg/Drivers/QrLogDxe/QrLogDxe.inf
 
   #
   # ACPI Tables

@@ -218,6 +218,87 @@ case "$(uname -s)" in
     ;;
 esac
 
+# 屏幕是这块板子在 USB 栈起来之前唯一的输出口：固件一旦 ASSERT 死循环，
+# 只能拍照。为了让照片能机读（而不是靠人眼/OCR 猜），把 SerialPortLib 的每个
+# 字节同时 tee 到 MemoryMapLib 已经预留好的 Log_Buffer（0xA7605000，32 KB），
+# 再由 kirbyPkg/Drivers/QrLogDxe 把这段文本切成块、画成轮播的二维码。
+#
+# 这里改的是库、不是驱动：SEC/PEI/DXE 所有模块共用同一个物理缓冲，所以
+# 连最早期的输出也能留下来。
+log "patching FrameBufferSerialPortLib: tee debug bytes into Log_Buffer"
+FBS=Silicon/Silicium/SiliciumPkg/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.c
+python3 - "$FBS" <<'PYEOF'
+import pathlib
+import sys
+
+p = pathlib.Path(sys.argv[1])
+text = p.read_text(encoding="utf-8")
+
+if "KirbyLogAppend" in text:
+    print("already teed")
+    raise SystemExit(0)
+
+helper = '''//
+// kirby: tee every debug byte into Log_Buffer so QrLogDxe can render the log
+// as QR codes while the panel is the only output device.
+//
+#define KIRBY_LOG_BASE   0xA7605000ULL
+#define KIRBY_LOG_MAX    0x00008000U
+#define KIRBY_LOG_MAGIC  0x474F4C4BU  /* 'KLOG' */
+#define KIRBY_LOG_HDR    8U
+
+STATIC
+VOID
+KirbyLogAppend (
+  IN CONST UINT8  *Data,
+  IN UINTN         Len
+  )
+{
+  volatile UINT32  *Header = (volatile UINT32 *)(UINTN)KIRBY_LOG_BASE;
+  volatile UINT8   *Body   = (volatile UINT8 *)(UINTN)(KIRBY_LOG_BASE + KIRBY_LOG_HDR);
+  UINT32            Used;
+  UINTN             Index;
+
+  if (Header[0] != KIRBY_LOG_MAGIC) {
+    Header[0] = KIRBY_LOG_MAGIC;
+    Header[1] = 0;
+  }
+
+  Used = Header[1];
+  if (Used >= (KIRBY_LOG_MAX - KIRBY_LOG_HDR)) {
+    return;
+  }
+
+  for (Index = 0; (Index < Len) && ((Used + Index) < (KIRBY_LOG_MAX - KIRBY_LOG_HDR)); Index++) {
+    Body[Used + Index] = Data[Index];
+  }
+
+  Header[1] = Used + (UINT32)Index;
+}
+
+'''
+
+marker = "UINTN\nEFIAPI\nSerialPortWrite ("
+if marker not in text:
+    print("SerialPortWrite marker not found", file=sys.stderr)
+    sys.exit(1)
+text = text.replace(marker, helper + marker, 1)
+
+body = (
+    "  EFI_STATUS           Status;\n"
+    "  EFI_PHYSICAL_ADDRESS FbBase;\n"
+    "  UINT64               FbLength;\n"
+)
+if body not in text:
+    print("SerialPortWrite body marker not found", file=sys.stderr)
+    sys.exit(1)
+text = text.replace(body, body + "\n  KirbyLogAppend (Buffer, NumberOfBytes);\n", 1)
+
+p.write_text(text, encoding="utf-8")
+print("teed SerialPortWrite into Log_Buffer")
+PYEOF
+grep -n -A2 "KirbyLogAppend (Buffer" "$FBS"
+
 log "building $TARGET"
 # EDK2's CLANGPDB toolchain wants the aarch64 binutils prefix on Linux hosts.
 if [ "$(uname -s)" = "Linux" ]; then

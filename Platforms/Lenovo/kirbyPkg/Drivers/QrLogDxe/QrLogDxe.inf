@@ -1,0 +1,41 @@
+## @file
+#  Puts the firmware debug log on screen as rotating QR codes.
+#
+#  Reads the KLOG ring that FrameBufferSerialPortLib tees into the
+#  Log_Buffer region and blits one chunk per timer tick.  No menu, no
+#  input device and no host tool required: a photograph of the panel is
+#  enough to recover the exact text.
+#
+#  Copyright (c) 2026, kirby bring-up. SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION    = 0x00010019
+  BASE_NAME      = QrLogDxe
+  FILE_GUID      = 7C2B9A44-1D6E-4E52-9C0B-3F5A8E1D4B77
+  MODULE_TYPE    = DXE_DRIVER
+  VERSION_STRING = 0.1
+  ENTRY_POINT    = QrLogDxeEntry
+
+[Sources]
+  QrLogDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  MsGraphicsPkg/MsGraphicsPkg.dec
+
+[LibraryClasses]
+  BaseMemoryLib
+  DebugLib
+  MemoryAllocationLib
+  QrEncoderLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+  UefiLib
+
+[Protocols]
+  gEfiGraphicsOutputProtocolGuid  ## CONSUMES
+
+[Depex]
+  gEfiGraphicsOutputProtocolGuid
