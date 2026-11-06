@@ -67,6 +67,17 @@ log "checking out UniXNU $UNIXNU_COMMIT"
 git -C "$WORK/unixnu" fetch --depth 1 origin "$UNIXNU_COMMIT" 2>/dev/null || git -C "$WORK/unixnu" fetch origin
 git -C "$WORK/unixnu" checkout -f "$UNIXNU_COMMIT"
 
+#
+# drivers/DarwinBoot is a git submodule, not a directory in the tree: a plain
+# clone leaves it empty, and the build then dies with
+#   Failed to convert Edk2Relative Path to an Absolute Path
+#   Relative Path: DarwinBootPkg/Driver/DarwinBoot.inf
+# Only this submodule is needed -- UniXNUPkg itself lives in the main
+# repository.  --init is idempotent, so this is safe on every run.
+#
+log "initialising the DarwinBoot submodule"
+git -C "$WORK/unixnu" submodule update --init drivers/DarwinBoot
+
 # stuart does not read PACKAGES_PATH from the environment: kirbyPkg's
 # DeviceBuild.GetPackagesPath() is the list it actually uses, and that is where
 # the two UniXNU roots are appended.  Exported here only for documentation.
