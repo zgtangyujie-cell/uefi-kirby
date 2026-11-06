@@ -95,7 +95,13 @@ PaintPanel (
 {
   UINT32  *Panel = (UINT32 *)(UINTN)KIRBY_PANEL_BASE;
   UINTN   OriginX = (KIRBY_PANEL_W - Size) / 2;
-  UINTN   OriginY = (KIRBY_PANEL_H - Size) / 2;
+  //
+  // Bottom of the panel, not the middle: the console starts at row 0 and grows
+  // down, so anything it prints after this driver returns lands above the code
+  // instead of across it.  The panel is 2120 tall, the code 680, and the boot
+  // log rarely passes 40 lines of 36 px.
+  //
+  UINTN   OriginY = KIRBY_PANEL_H - Size - 100;
   UINTN   Row;
   UINTN   Col;
 
