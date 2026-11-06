@@ -38,6 +38,23 @@
 
 !include LanaiPkg/LanaiPkg.dsc.inc
 
+[PcdsFeatureFlag]
+  #
+  # EnglishDxe installs EFI_UNICODE_COLLATION2_PROTOCOL only when this flag is
+  # set, and it never installs the v1 protocol at all:
+  #     if (FeaturePcdGet (PcdUnicodeCollation2Support)) {
+  #       gBS->InstallMultipleProtocolInterfaces (&mHandle,
+  #         &gEfiUnicodeCollation2ProtocolGuid, &Unicode2Eng, NULL);
+  #     }
+  #     return Status;
+  # With the flag clear the driver loads, runs, installs nothing and still
+  # returns EFI_SUCCESS.  FatDriverBindingStart then fails on its very first
+  # statement ("InitializeUnicodeCollationSupport" -> EFI_UNSUPPORTED) and never
+  # opens the volume, which is indistinguishable from a rejected FAT image.
+  # This is why SimpleFileSystem stayed at 0 for every payload variant.
+  #
+  gEfiMdeModulePkgTokenSpaceGuid.PcdUnicodeCollation2Support|TRUE
+
 [PcdsFixedAtBuild]
   #
   # DDR Memory
