@@ -304,24 +304,32 @@ grep -n -A2 "KirbyLogAppend (Buffer" "$FBS"
 # BDS 的启动菜单一进来就 ClearScreen，把 QrLogDxe 画好的二维码整屏抹掉——这就是
 # 照片里只有菜单、没有码的原因。把这三处清屏注释掉，二维码就能留在菜单底下，
 # 两者同屏：菜单在中间，码在左下角，控制台文字在上方。
-log "patching BootManagerMenuApp: keep the screen so the QR log survives"
-BMM=MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenu.c
-if [ -f "$BMM" ]; then
-  python3 - "$BMM" <<'BMMEOF'
+# BDS 的菜单一进来就 ClearScreen，把 QrLogDxe 画好的二维码整屏抹掉——照片里只有
+# 菜单没有码就是这个原因。PcdBootManagerMenuFile 指向的是 UiApp，所以真正的清屏
+# 在 MdeModulePkg/Application/UiApp/FrontPage.c；BootManagerMenuApp 里也有三处，
+# 一并关掉。关掉后菜单照样画，只是不再擦背景，二维码就留在左下角。
+log "patching UiApp/FrontPage.c and BootManagerMenuApp: keep the screen for the QR log"
+python3 - <<'UIAEOF'
 import pathlib
-import sys
 
-p = pathlib.Path(sys.argv[1])
-text = p.read_text(encoding="utf-8")
+targets = [
+    "MdeModulePkg/Application/UiApp/FrontPage.c",
+    "MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenu.c",
+]
 needle = "gST->ConOut->ClearScreen (gST->ConOut);"
-if needle not in text:
-    print("BootManagerMenu already patched")
-    raise SystemExit(0)
-text = text.replace(needle, "/* kirby: keep the QR log on screen */ (VOID)0;")
-p.write_text(text, encoding="utf-8")
-print("clear-screen disabled")
-BMMEOF
-fi
+for rel in targets:
+    p = pathlib.Path(rel)
+    if not p.exists():
+        print(f"skip {rel} (not present)")
+        continue
+    text = p.read_text(encoding="utf-8")
+    if needle not in text:
+        print(f"{rel}: already patched")
+        continue
+    p.write_text(text.replace(needle, "/* kirby: keep the QR log on screen */ (VOID)0;"),
+                 encoding="utf-8")
+    print(f"{rel}: clear-screen disabled")
+UIAEOF
 
 log "building $TARGET"
 # EDK2's CLANGPDB toolchain wants the aarch64 binutils prefix on Linux hosts.
