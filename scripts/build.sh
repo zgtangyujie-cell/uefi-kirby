@@ -104,45 +104,54 @@ dlh = pathlib.Path(sys.argv[2])
 
 # A cached mu_basecore may still carry the previous run's edits (submodule
 # checkout does not always discard them), so every patch below has to be
-# idempotent: detect the marker, print, and carry on.
-if "kirby: ASSERT no-op" in dbc.read_text(encoding="utf-8"):
-    print("DebugLib already patched, skipping")
-    raise SystemExit(0)
+# idempotent and INDEPENDENT.  Never skip the whole script because one file
+# was already patched: that was the bug on 821cacd -- DebugLib.c carried the
+# marker, the script raised SystemExit(0), DebugLib.h got restored by the
+# submodule refresh, and AutoGen.c ASSERT_EFI_ERROR dead-looped again
+# ("ASSERT AutoGen.c:389: !EFI_ERROR (Status)" on screen).
 
 # --- 1. DebugAssertEnabled() -> FALSE -------------------------------------
 text = dbc.read_text(encoding="utf-8")
-gate = re.compile(
-    r"return\s*\(\s*BOOLEAN\s*\)\s*\(\s*\(\s*PcdGet8\s*\(\s*PcdDebugPropertyMask\s*\)"
-    r"\s*&\s*DEBUG_PROPERTY_DEBUG_ASSERT_ENABLED\s*\)\s*!=\s*0\s*\)\s*;"
-)
-hits = gate.findall(text)
-if len(hits) != 1:
-    print(f"DebugAssertEnabled body matched {len(hits)} times, expected 1", file=sys.stderr)
-    sys.exit(1)
-text = gate.sub(
-    "return FALSE; /* kirby: ASSERT no-op for bring-up, see scripts/build.sh */",
-    text,
-    count=1,
-)
-dbc.write_text(text, encoding="utf-8")
+if "kirby: ASSERT no-op" in text:
+    print("DebugAssertEnabled already patched")
+else:
+    gate = re.compile(
+        r"return\s*\(\s*BOOLEAN\s*\)\s*\(\s*\(\s*PcdGet8\s*\(\s*PcdDebugPropertyMask\s*\)"
+        r"\s*&\s*DEBUG_PROPERTY_DEBUG_ASSERT_ENABLED\s*\)\s*!=\s*0\s*\)\s*;"
+    )
+    hits = gate.findall(text)
+    if len(hits) != 1:
+        print(f"DebugAssertEnabled body matched {len(hits)} times, expected 1", file=sys.stderr)
+        sys.exit(1)
+    text = gate.sub(
+        "return FALSE; /* kirby: ASSERT no-op for bring-up, see scripts/build.sh */",
+        text,
+        count=1,
+    )
+    dbc.write_text(text, encoding="utf-8")
+    print("patched DebugAssertEnabled")
 
-# --- 2. ASSERT(Expression) macro -> empty ---------------------------------
+# --- 2. Override ASSERT / ASSERT_EFI_ERROR at the END of DebugLib.h -------
+# Use #undef + #define instead of a shape-sensitive regex: a cached basecore
+# may ship a differently formatted macro, and a failed regex used to abort
+# the whole build.  ASSERT becomes a no-op; ASSERT_EFI_ERROR keeps the
+# informative DEBUG(ERROR) line but drops the dead-loop assertion, so a
+# driver that legitimately returns EFI_NOT_FOUND (TZ/QSEE unavailable on the
+# fastboot boot path) no longer pins the firmware in CpuDeadLoop().
 text = dlh.read_text(encoding="utf-8")
-macro = re.compile(
-    r"#define\s+ASSERT\s*\(\s*Expression\s*\)\s*\\[ \t]*\r?\n"
-    r"(?:[^\n]*\\[ \t]*\r?\n)*"
-    r"[^\n]*while\s*\(\s*FALSE\s*\)"
-)
-hits = macro.findall(text)
-if len(hits) < 1:
-    print("ASSERT(Expression) macro not found", file=sys.stderr)
-    sys.exit(1)
-text = macro.sub(
-    "#define ASSERT(Expression)  do { if (FALSE) { (VOID)(Expression); } } while (FALSE)",
-    text,
-)
-dlh.write_text(text, encoding="utf-8")
-print(f"patched: DebugAssertEnabled + {len(hits)} ASSERT macro block(s)")
+if "kirby: ASSERT overrides" not in text:
+    text += (
+        "\n/* kirby: ASSERT overrides (see scripts/build.sh) */\n"
+        "#undef ASSERT\n"
+        "#define ASSERT(Expression)  do { if (FALSE) { (VOID)(Expression); } } while (FALSE)\n"
+        "#undef ASSERT_EFI_ERROR\n"
+        "#define ASSERT_EFI_ERROR(Status)  do { if (EFI_ERROR (Status)) { "
+        "DEBUG ((DEBUG_ERROR, \"ASSERT_EFI_ERROR (Status = %r)\\n\", Status)); } } while (FALSE)\n"
+    )
+    dlh.write_text(text, encoding="utf-8")
+    print("patched ASSERT + ASSERT_EFI_ERROR overrides")
+else:
+    print("ASSERT overrides already patched")
 PYEOF
 grep -n -A3 "DebugAssertEnabled (" "$DBC" | head -6
 grep -n "define ASSERT(Expression)" "$DLH"
