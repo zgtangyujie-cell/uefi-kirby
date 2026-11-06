@@ -107,6 +107,22 @@
   #
   gEfiMdeModulePkgTokenSpaceGuid.PcdEmuVariableNvModeEnable|TRUE
 
+  #
+  # Boot manager menu.
+  #
+  # UniXNUDxe cannot register Boot0000 here: SetVariable returns
+  # EFI_INVALID_PARAMETER with demonstrably valid arguments (attr=0x7, 96 bytes),
+  # with the NV attribute removed (attr=0x6) and with EmuNvMode enabled -- so the
+  # variable store itself is broken on this platform, and BDS falls back to its
+  # default boot-device list for the same reason.
+  #
+  # BDS does not need Boot#### to start an application: it resolves
+  # PcdBootManagerMenuFile in the firmware volume and boots that image.  Point it
+  # at UniXNU.efi (FILE_GUID of UniXNUPkg/Application/UniXNU/UniXNU.inf) and BDS
+  # starts UniXNU without touching the variable store at all.
+  #
+  gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile|{GUID("9B665204-A133-47A2-9396-9E2B370A4E25")}
+
 [Packages]
   #
   # UniXNU required integration.  DarwinBoot.inf consumes

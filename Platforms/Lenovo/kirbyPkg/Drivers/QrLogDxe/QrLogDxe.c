@@ -355,15 +355,9 @@ QrLogDxeEntry (
     );
 
   //
-  // Hold here while a QR capture is needed.  UniXNUDxe is dispatched before
-  // this driver, so its lines are already in Log_Buffer; returning lets BDS
-  // scroll them off the panel and leaves only "Connect ConIn failed" visible.
-  // Flip this back to a plain return once the boot option registers -- the
-  // BDS-text build is the one to keep long term.
+  // Hand back to BDS.  The boot path no longer depends on UniXNUDxe writing
+  // Boot#### -- PcdBootManagerMenuFile points BDS straight at UniXNU.efi -- so
+  // holding the panel here would only block the thing we want to see.
   //
-  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
-    gBS->Stall (1000000);
-  }
-
   return EFI_SUCCESS;
 }
