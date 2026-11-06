@@ -25,6 +25,7 @@
 #include <Library/CacheMaintenanceLib.h>
 #include <Library/DebugLib.h>
 #include <Library/MemoryAllocationLib.h>
+#include <Library/PcdLib.h>
 #include <Library/QrEncoderLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
@@ -139,6 +140,13 @@ ReportProtocols (
   EFI_HANDLE  *Handles;
   UINTN       Count;
   UINTN       Index;
+
+  //
+  // EnglishDxe produces EFI_UNICODE_COLLATION2_PROTOCOL only behind this
+  // feature PCD.  If it reads FALSE here, the DSC override did not reach the
+  // module's AutoGen and the driver installs nothing while returning success.
+  //
+  DEBUG ((DEBUG_ERROR, "QrLog: PcdUniColl2=%u\n", (UINT32)FeaturePcdGet (PcdUnicodeCollation2Support)));
 
   Handles = NULL;
   Count   = 0;

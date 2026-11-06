@@ -30,10 +30,14 @@
   CacheMaintenanceLib
   DebugLib
   MemoryAllocationLib
+  PcdLib
   QrEncoderLib
   UefiBootServicesTableLib
   UefiDriverEntryPoint
   UefiLib
+
+[FeaturePcd]
+  gEfiMdeModulePkgTokenSpaceGuid.PcdUnicodeCollation2Support  ## CONSUMES
 
 [Protocols]
   gEfiGraphicsOutputProtocolGuid  ## CONSUMES
