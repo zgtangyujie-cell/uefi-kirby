@@ -145,20 +145,27 @@ ReportProtocols (
   Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiBlockIoProtocolGuid, NULL, &Count, &Handles);
   DEBUG ((DEBUG_ERROR, "QrLog: BlockIo=%u %r\n", (UINT32)Count, Status));
   if (Handles != NULL) {
-    //
-    // Nothing runs a connect pass on a handle that appears this late:
-    // UniXNURamDiskDxe publishes its BlockIo during driver dispatch, long after
-    // BDS's last ConnectController, so DiskIoDxe/Fat never get a chance to bind
-    // it.  Force one pass here before counting, otherwise SimpleFileSystem is
-    // always zero no matter how good the FAT image is.
-    //
-    for (Index = 0; Index < Count; Index++) {
-      gBS->ConnectController (Handles[Index], NULL, NULL, TRUE);
-    }
     FreePool (Handles);
   }
 
   Handles = NULL;
+  Count   = 0;
+  //
+  // Force a connect pass over EVERY handle, not just the BlockIo one.
+  // EnglishDxe only publishes UnicodeCollation when its DriverBindingStart
+  // runs, and nothing has asked it to at this point; FatDriverBindingStart then
+  // fails on its very first statement ("InitializeUnicodeCollationSupport") and
+  // never opens the volume at all -- which is why every payload looked rejected
+  // no matter how the FAT image was built.
+  //
+  if (!EFI_ERROR (gBS->LocateHandleBuffer (AllHandles, NULL, NULL, &Count, &Handles))) {
+    for (Index = 0; Index < Count; Index++) {
+      gBS->ConnectController (Handles[Index], NULL, NULL, TRUE);
+    }
+    FreePool (Handles);
+    Handles = NULL;
+  }
+
   Count   = 0;
   Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiDiskIoProtocolGuid, NULL, &Count, &Handles);
   DEBUG ((DEBUG_ERROR, "QrLog: DiskIo=%u %r\n", (UINT32)Count, Status));
