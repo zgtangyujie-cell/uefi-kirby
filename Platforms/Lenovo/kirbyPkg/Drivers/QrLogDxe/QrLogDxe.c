@@ -328,24 +328,25 @@ QrLogDxeEntry (
   }
 
   //
-  // Everything BDS draws -- its menu background included -- is painted with
-  // GOP fills straight after this driver returns, and none of the ClearScreen
-  // hooks can stop that.  Staying here keeps the code on the panel and freezes
-  // the boot at the last driver: acceptable for a bring-up image whose only
-  // job right now is to hand back an exact log.
+  // Hand the firmware back to BDS.  The static QR above is the last frame this
+  // driver paints; BDS will repaint the panel with its own GOP fills, and from
+  // there on FrameBufferSerialPortLib writes every DEBUG byte straight to the
+  // panel as text -- a photograph still reads the boot log, just not as a QR.
   //
+  // Freezing the boot here was only ever a bring-up trick to make the QR the
+  // single visible surface.  It also made BDS unreachable, and with it the
+  // UniXNU required-integration drivers and the boot menu.  Revert this hunk
+  // to restore the static-QR-only image if a QR capture is needed again.
   //
-  // Bounded rather than `for (;;)`: the firmware never leaves this loop in
-  // practice, but a constant bound keeps the compiler from calling the return
-  // below unreachable.
+  // Call DrawFrame() directly rather than ShowRound(): the latter stalls for
+  // QR_FRAME_DELAY_US (6 s) to hold each rotating frame on screen, which is
+  // pointless for a single frame and would delay BDS for no reason.
   //
-  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
-    ShowRound ();
-    WriteBackInvalidateDataCacheRange (
-      (VOID *)(UINTN)KIRBY_PANEL_BASE,
-      (UINTN)KIRBY_PANEL_W * KIRBY_PANEL_H * 4
-      );
-  }
+  DrawFrame ();
+  WriteBackInvalidateDataCacheRange (
+    (VOID *)(UINTN)KIRBY_PANEL_BASE,
+    (UINTN)KIRBY_PANEL_W * KIRBY_PANEL_H * 4
+    );
 
   return EFI_SUCCESS;
 }
