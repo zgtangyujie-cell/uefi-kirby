@@ -301,6 +301,28 @@ print("teed SerialPortWrite into Log_Buffer")
 PYEOF
 grep -n -A2 "KirbyLogAppend (Buffer" "$FBS"
 
+# BDS 的启动菜单一进来就 ClearScreen，把 QrLogDxe 画好的二维码整屏抹掉——这就是
+# 照片里只有菜单、没有码的原因。把这三处清屏注释掉，二维码就能留在菜单底下，
+# 两者同屏：菜单在中间，码在左下角，控制台文字在上方。
+log "patching BootManagerMenuApp: keep the screen so the QR log survives"
+BMM=MdeModulePkg/Application/BootManagerMenuApp/BootManagerMenu.c
+if [ -f "$BMM" ]; then
+  python3 - "$BMM" <<'BMMEOF'
+import pathlib
+import sys
+
+p = pathlib.Path(sys.argv[1])
+text = p.read_text(encoding="utf-8")
+needle = "gST->ConOut->ClearScreen (gST->ConOut);"
+if needle not in text:
+    print("BootManagerMenu already patched")
+    raise SystemExit(0)
+text = text.replace(needle, "/* kirby: keep the QR log on screen */ (VOID)0;")
+p.write_text(text, encoding="utf-8")
+print("clear-screen disabled")
+BMMEOF
+fi
+
 log "building $TARGET"
 # EDK2's CLANGPDB toolchain wants the aarch64 binutils prefix on Linux hosts.
 if [ "$(uname -s)" = "Linux" ]; then

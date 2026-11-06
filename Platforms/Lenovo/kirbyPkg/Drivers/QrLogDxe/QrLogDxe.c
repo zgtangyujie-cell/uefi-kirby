@@ -94,7 +94,7 @@ PaintPanel (
   )
 {
   UINT32  *Panel = (UINT32 *)(UINTN)KIRBY_PANEL_BASE;
-  UINTN   OriginX = (KIRBY_PANEL_W - Size) / 2;
+  UINTN   OriginX = 90;
   //
   // Centre it, and clear the whole panel first.  Centred is the framing that
   // actually decoded from a phone photograph; anchoring it at the bottom
@@ -102,7 +102,7 @@ PaintPanel (
   // sharp.  Clearing the rest removes the console text that would otherwise
   // bleed through and confuse the decoder.
   //
-  UINTN   OriginY = (KIRBY_PANEL_H - Size) / 2;
+  UINTN   OriginY = KIRBY_PANEL_H - Size - 90;
   UINTN   Row;
   UINTN   Col;
 
