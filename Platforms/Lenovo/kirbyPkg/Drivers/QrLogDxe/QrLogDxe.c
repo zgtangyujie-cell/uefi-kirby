@@ -28,6 +28,9 @@
 #include <Library/QrEncoderLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
+#include <Protocol/BlockIo.h>
+#include <Protocol/DiskIo.h>
+#include <Protocol/SimpleFileSystem.h>
 #include <Protocol/GraphicsOutput.h>
 
 //
@@ -99,6 +102,49 @@ STATIC UINTN                          mWidth;
 STATIC UINTN                          mHeight;
 STATIC UINTN                          mFrame;
 STATIC BOOLEAN                        mTickReported;
+
+//
+// Diagnostic only.  Fat reports EFI_UNSUPPORTED when it declines a device and
+// prints nothing at all, so "no SimpleFileSystem" on screen cannot distinguish
+//   (a) Fat was never dispatched,
+//   (b) Fat ran but DiskIoDxe never bound the ramdisk,
+//   (c) Fat bound it and rejected the BPB.
+// Counting the three protocols separates them.
+//
+STATIC
+VOID
+ReportProtocols (
+  VOID
+  )
+{
+  EFI_STATUS  Status;
+  EFI_HANDLE  *Handles;
+  UINTN       Count;
+
+  Handles = NULL;
+  Count   = 0;
+  Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiBlockIoProtocolGuid, NULL, &Count, &Handles);
+  DEBUG ((DEBUG_ERROR, "QrLog: BlockIo=%u %r\n", (UINT32)Count, Status));
+  if (Handles != NULL) {
+    FreePool (Handles);
+  }
+
+  Handles = NULL;
+  Count   = 0;
+  Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiDiskIoProtocolGuid, NULL, &Count, &Handles);
+  DEBUG ((DEBUG_ERROR, "QrLog: DiskIo=%u %r\n", (UINT32)Count, Status));
+  if (Handles != NULL) {
+    FreePool (Handles);
+  }
+
+  Handles = NULL;
+  Count   = 0;
+  Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &Count, &Handles);
+  DEBUG ((DEBUG_ERROR, "QrLog: SimpleFs=%u %r\n", (UINT32)Count, Status));
+  if (Handles != NULL) {
+    FreePool (Handles);
+  }
+}
 
 STATIC
 VOID
@@ -354,12 +400,17 @@ QrLogDxeEntry (
     (UINTN)KIRBY_PANEL_W * KIRBY_PANEL_H * 4
     );
 
+  ReportProtocols ();
+
   //
-  // Hand back to BDS.  The payload chain is proven now:
-  //   UNIXNURAMDISK: initrd block device 0xB755F000 size 0xA9F600 Success
-  // so BDS can start UniXNU through PcdBootManagerMenuFile and it should find
-  // \EFI\UniXNU\unixnu.toml on the ramdisk volume instead of falling back to
-  // the built-in configuration.
+  // Hold the panel for a capture.  The payload volume is published now
+  // (UNIXNURAMDISK reports Success) but FAT never produced a SimpleFileSystem,
+  // and the three counts above say which stage stopped.  Returning would let
+  // BDS and UniXNU paint over them.
   //
+  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
+    gBS->Stall (1000000);
+  }
+
   return EFI_SUCCESS;
 }

@@ -37,6 +37,15 @@
 
 [Protocols]
   gEfiGraphicsOutputProtocolGuid  ## CONSUMES
+  #
+  # Diagnostic only: QrLogDxeEntry counts these three so a capture can tell
+  # "Fat never ran" apart from "Fat ran and refused the ramdisk".  Fat reports
+  # EFI_UNSUPPORTED on a rejected device and prints nothing, so without this
+  # count the two cases look identical on screen.
+  #
+  gEfiBlockIoProtocolGuid          ## CONSUMES
+  gEfiDiskIoProtocolGuid           ## CONSUMES
+  gEfiSimpleFileSystemProtocolGuid ## CONSUMES
 
 [Depex]
   gEfiGraphicsOutputProtocolGuid
