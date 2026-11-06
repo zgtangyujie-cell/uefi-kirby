@@ -129,9 +129,11 @@
   INF SiliciumPkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
 !endif
 
-  # 退回：SPMI 需要 SPMI 控制器时钟，而时钟来自 ClockDxe -> RpmhDxe -> SMEM。
-  # SMEM 未修好之前这条链是死的，加载它只会让启动停在 SPMI 而不是进菜单。
-  # INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
+  # ① 单变量恢复：只放开 ButtonsDxe，用静态二维码日志看它到底缺哪个协议。
+  # 原「SPMI→Clock→SMEM 死链」的判断是错的：tools/apply_binary_patches.py
+  # 已有 SPMIDxe(0x154C) / PmicDxeLa(0x8AA0,0x22B84) / ButtonsDxe(0x3E70,0x3E74) 补丁。
+  # giulia 同 SoC 在 DXE.inc:80 / APRIORI.inc:89 启用它（2026-11-06 核实）。
+  INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ChargerExDxe/ChargerExDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回

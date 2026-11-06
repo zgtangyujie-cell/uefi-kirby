@@ -170,9 +170,10 @@ APRIORI DXE {
   # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
   # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
   # INF Binaries/kirby/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
-  # 退回：SPMI 需要 SPMI 控制器时钟，而时钟来自 ClockDxe -> RpmhDxe -> SMEM。
-  # SMEM 未修好之前这条链是死的，加载它只会让启动停在 SPMI 而不是进菜单。
-  # INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
+  # ① 单变量恢复：只放开 ButtonsDxe，放在 QrLogDxe（末尾）之前调度。
+  # 原「SPMI→Clock→SMEM 死链」的判断是错的，见 tools/apply_binary_patches.py 的既有补丁。
+  # 位置对齐 giulia APRIORI.inc:89（UsbConfig 之后、Tsens 之前）。
+  INF Binaries/kirby/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/TsensDxe/TsensDxe.inf
 
