@@ -46,6 +46,7 @@
   gEfiBlockIoProtocolGuid          ## CONSUMES
   gEfiDiskIoProtocolGuid           ## CONSUMES
   gEfiSimpleFileSystemProtocolGuid ## CONSUMES
+  gEfiUnicodeCollationProtocolGuid ## CONSUMES
 
 [Depex]
   gEfiGraphicsOutputProtocolGuid

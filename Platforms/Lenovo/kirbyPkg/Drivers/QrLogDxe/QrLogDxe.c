@@ -155,6 +155,20 @@ ReportProtocols (
   if (Handles != NULL) {
     FreePool (Handles);
   }
+
+  //
+  // FatDriverBindingStart bails out with EFI_UNSUPPORTED before touching the
+  // volume when InitializeUnicodeCollationSupport cannot find this protocol,
+  // and prints nothing while doing it.  Zero here means EnglishDxe never
+  // dispatched, which makes any FAT image look "rejected".
+  //
+  Handles = NULL;
+  Count   = 0;
+  Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiUnicodeCollationProtocolGuid, NULL, &Count, &Handles);
+  DEBUG ((DEBUG_ERROR, "QrLog: UniColl=%u %r\n", (UINT32)Count, Status));
+  if (Handles != NULL) {
+    FreePool (Handles);
+  }
 }
 
 STATIC
