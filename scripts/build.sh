@@ -218,7 +218,14 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       echo "PROBE: script $ENTRY_PROBE"
       echo "PROBE: kernel $KERNEL_TMP ($(wc -c < "$KERNEL_TMP") bytes)"
       echo "PROBE: llvm-nm=$(command -v llvm-nm || echo MISSING) clang=$(command -v clang || echo MISSING)"
-      UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" --no-reset ||
+      #
+      # stage 1/2 are already proven on the panel (blue band 1, magenta band 2,
+      # and DiagDraw showed Video[0] = 0x3E100000).  Now add stage 3: wait six
+      # seconds right after the MMU comes on, then PSCI SYSTEM_RESET.  A reboot
+      # after roughly that delay means the CPU got through the MMU enable; no
+      # reboot means it died at the enable itself.
+      #
+      UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" --reset-delay 6 ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
