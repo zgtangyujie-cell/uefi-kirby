@@ -37,6 +37,7 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Protocol/BlockIo.h>
 #include <Protocol/DevicePath.h>
+#include <Protocol/FirmwareVolume2.h>
 
 //
 // Mu-Silicium SEC stores the incoming x0 (device tree pointer) here.  Local
@@ -52,6 +53,7 @@ STATIC CONST EFI_GUID  mEntryArgHobGuid = {
 #define FAT_LABEL_LEN    11
 #define FAT_TYPE_OFF     54
 #define FAT_SECTORS_OFF  32
+#define FAT_SECTORS16_OFF  19
 
 //
 // A region has to be at least this big before the memory scan bothers with it;
@@ -67,7 +69,15 @@ STATIC CONST CHAR8  mLabel[FAT_LABEL_LEN] = {
   'T', 'B', '3', '2', '1', 'F', 'U', 'E', 'S', 'P', ' '
 };
 
-STATIC CONST CHAR8  mFat16[8] = { 'F', 'A', 'T', '1', '6', ' ', ' ', ' ' };
+//
+// Must match FILE FREEFORM in kirby.fdf.  The embedded payload is a 32 KiB
+// FAT12 volume; FAT12 rather than FAT16 because FAT16 needs at least 4085
+// clusters, which is 2 MiB even at one sector per cluster, and the firmware
+// volume has no room for that.
+//
+STATIC CONST EFI_GUID  mPayloadGuid = {
+  0x7B1E4C62, 0x2D5A, 0x4F83, { 0x9E, 0x71, 0x3C, 0x8A, 0x5D, 0x0B, 0x6F, 0x24 }
+};
 
 #pragma pack(1)
 typedef struct {
@@ -243,11 +253,29 @@ VolumeSizeAt (
     return 0;
   }
 
-  if (CompareMem (Sector + FAT_TYPE_OFF, mFat16, sizeof (mFat16)) != 0) {
+  //
+  // The embedded bring-up payload is FAT12 -- FAT16 cannot be made small
+  // enough for the firmware volume -- while an external payload is FAT16.
+  // Accept either, or the embedded volume is rejected as "not ours".
+  //
+  if ((CompareMem (Sector + FAT_TYPE_OFF, "FAT1", 4) != 0) ||
+      ((Sector[FAT_TYPE_OFF + 4] != '2') && (Sector[FAT_TYPE_OFF + 4] != '6')))
+  {
     return 0;
   }
 
-  Bytes = (UINT64)ReadUnaligned32 ((CONST UINT32 *)(Sector + FAT_SECTORS_OFF)) * RAM_BLOCK_SIZE;
+  Bytes = (UINT64)ReadUnaligned32 ((CONST UINT32 *)(Sector + FAT_SECTORS_OFF));
+  //
+  // Volumes under 32 MiB store the sector count in the 16-bit field at 19 and
+  // leave the 32-bit one at 32 zero.  The embedded 32 KiB payload is one of
+  // those: reading only the 32-bit field would size it as zero bytes and the
+  // volume would be thrown away as "not ours".
+  //
+  if (Bytes == 0) {
+    Bytes = ReadUnaligned16 ((CONST UINT16 *)(Sector + FAT_SECTORS16_OFF));
+  }
+
+  Bytes *= RAM_BLOCK_SIZE;
   if ((Bytes == 0) || (Bytes > Limit)) {
     return 0;
   }
@@ -416,91 +444,83 @@ ReportRegions (
 }
 
 /**
-  Sweep the lowest reserved block, and only that one.
+  Fall back to the payload embedded in the firmware volume.
 
-  Two builds died here.  Both walked several reserved blocks and both ended in
-  a data abort, so at least one of them is not readable even though the memory
-  map describes it.  What is left is the block the kernel itself runs from: its
-  first page must be readable, and it is where a bootloader that loads a
-  ramdisk parks it -- right after the kernel, 1 MiB or 4 KiB aligned, not
-  necessarily on a 2 MiB boundary (the previous attempt stepped 2 MiB and would
-  have walked straight past 0x80100000).
+  This is the path that actually works on kirby.  The boot image does carry an
+  8 MiB FAT16 payload in its ramdisk field -- ramdisk_size 0x800000 at offset
+  0x87000 -- but the bootloader never loads it: the initrd range left in the
+  device tree still points at the previous Android boot's cpio archive, the
+  440 MB of conventional memory holds no such volume, and reading the reserved
+  ranges to look for it aborts the boot three times over.
 
-  So: pick the lowest reserved block at least as big as the payload, print its
-  head so a miss still says what lives there, then walk it at 4 KiB.
+  So the bring-up payload rides inside the firmware volume as a FREEFORM file
+  (kirby.fdf) and is read back with the volume's own protocol.  Nothing is
+  dereferenced that the firmware does not already own.
 **/
 STATIC
 EFI_STATUS
-ProbeReserved (
-  IN EFI_MEMORY_DESCRIPTOR  *Map,
-  IN UINTN                  Size,
-  IN UINTN                  DescriptorSize
+FindEmbedded (
+  VOID
   )
 {
-  UINTN   At;
-  UINT8   *Head;
-  UINT64  Bytes;
-  UINT64  Base;
-  UINT64  Offset;
-  UINT64  Found;
+  EFI_STATUS                     Status;
+  EFI_FIRMWARE_VOLUME2_PROTOCOL  *Fv;
+  EFI_HANDLE                     *Handles;
+  UINTN                          Count;
+  UINTN                          Index;
+  VOID                           *Buffer;
+  UINTN                          BufferSize;
+  UINT32                         AuthenticationStatus;
+  UINT64                         Bytes;
 
-  Base = 0;
-  for (At = 0; At + DescriptorSize <= Size; At += DescriptorSize) {
-    EFI_MEMORY_DESCRIPTOR  *Entry = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + At);
+  Status = gBS->LocateHandleBuffer (
+                  ByProtocol,
+                  &gEfiFirmwareVolume2ProtocolGuid,
+                  NULL,
+                  &Count,
+                  &Handles
+                  );
+  if (EFI_ERROR (Status)) {
+    return Status;
+  }
 
-    if (Entry->Type != EfiReservedMemoryType) {
+  for (Index = 0; Index < Count; Index++) {
+    Status = gBS->HandleProtocol (Handles[Index], &gEfiFirmwareVolume2ProtocolGuid, (VOID **)&Fv);
+    if (EFI_ERROR (Status)) {
       continue;
     }
 
-    Bytes = EFI_PAGES_TO_SIZE (Entry->NumberOfPages);
+    Buffer     = NULL;
+    BufferSize = 0;
+    Status     = Fv->ReadSection (
+                       Fv,
+                       (EFI_GUID *)&mPayloadGuid,
+                       EFI_SECTION_RAW,
+                       0,
+                       &Buffer,
+                       &BufferSize,
+                       &AuthenticationStatus
+                       );
+    if (EFI_ERROR (Status) || (Buffer == NULL)) {
+      continue;
+    }
+
+    Bytes = VolumeSizeAt ((UINT8 *)Buffer, BufferSize);
+    if (Bytes == 0) {
+      FreePool (Buffer);
+      continue;
+    }
+
     //
-    // Bound the candidates hard.  A block far below the kernel could be a
-    // multi-gigabyte hole that is merely *described* as reserved, and walking
-    // it at 4 KiB would both take minutes and reach memory that is not backed.
+    // The block device points straight at this buffer, so it is deliberately
+    // never freed.
     //
-    if ((Bytes < SCAN_MIN_REGION) || (Bytes > 64ULL * 1024 * 1024)) {
-      continue;
-    }
-
-    if ((Entry->PhysicalStart < 0x40000000ULL) || (Entry->PhysicalStart >= 0x90000000ULL)) {
-      continue;
-    }
-
-    if ((Base == 0) || (Entry->PhysicalStart < Base)) {
-      Base = Entry->PhysicalStart;
-    }
+    Status = InstallVolume ((UINT64)(UINTN)Buffer, Bytes);
+    FreePool (Handles);
+    return Status;
   }
 
-  if (Base == 0) {
-    return EFI_NOT_FOUND;
-  }
-
-  Head = (UINT8 *)(UINTN)Base;
-  DEBUG ((
-    DEBUG_ERROR,
-    "KIRBYINITRD: p 0x%lx %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x\n",
-    Base,
-    Head[0], Head[1], Head[2], Head[3], Head[4], Head[5], Head[6], Head[7],
-    Head[8], Head[9], Head[10], Head[11], Head[12], Head[13], Head[14], Head[15]
-    ));
-
-  Bytes = 0;
-  for (At = 0; At + DescriptorSize <= Size; At += DescriptorSize) {
-    EFI_MEMORY_DESCRIPTOR  *Entry = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + At);
-
-    if ((Entry->Type == EfiReservedMemoryType) && (Entry->PhysicalStart == Base)) {
-      Bytes = EFI_PAGES_TO_SIZE (Entry->NumberOfPages);
-      break;
-    }
-  }
-
-  for (Offset = 0; (Bytes != 0) && (Offset + RAM_BLOCK_SIZE <= Bytes); Offset += 4 * 1024) {
-    Found = VolumeSizeAt ((UINT8 *)(UINTN)(Base + Offset), Bytes - Offset);
-    if (Found != 0) {
-      return InstallVolume (Base + Offset, Found);
-    }
-  }
-
+  FreePool (Handles);
   return EFI_NOT_FOUND;
 }
 
@@ -541,10 +561,6 @@ ScanMemoryMap (
 
   ReportRegions (Map, Size, DescriptorSize);
 
-  if (!EFI_ERROR (ProbeReserved (Map, Size, DescriptorSize))) {
-    FreePool (Map);
-    return EFI_SUCCESS;
-  }
 
   Status = ScanMemory (Map, Size, DescriptorSize);
   FreePool (Map);
@@ -607,6 +623,10 @@ KirbyInitrdDxeEntry (
     } else {
       DEBUG ((DEBUG_ERROR, "KIRBYINITRD: device tree has no /chosen\n"));
     }
+  }
+
+  if (!EFI_ERROR (FindEmbedded ())) {
+    return EFI_SUCCESS;
   }
 
   //

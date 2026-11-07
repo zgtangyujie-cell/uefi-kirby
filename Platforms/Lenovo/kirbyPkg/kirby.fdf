@@ -100,6 +100,21 @@ READ_LOCK_STATUS   = TRUE
   # IORT DT
   INF QcomPkg/Drivers/IortDtDxe/IortDtDxe.inf
 
+  #
+  # UniXNU bring-up payload: a 32 KiB FAT12 volume holding nothing but
+  # EFI/UniXNU/unixnu.toml.  It rides in the firmware volume because the
+  # bootloader never loads the boot image's ramdisk on this device -- the
+  # device tree still carries the previous Android boot's initrd range, and
+  # that memory turned out to hold a cpio archive, not our FAT.  Reading
+  # reserved memory to hunt for it aborts the boot, so the payload is embedded
+  # instead.  KirbyInitrdDxe reads this file with the FV2 protocol and
+  # publishes it as a block device.
+  #
+  FILE FREEFORM = 7B1E4C62-2D5A-4F83-9E71-3C8A5D0B6F24 {
+    SECTION RAW = kirbyPkg/Resources/payload.img
+    SECTION UI  = "UniXNUPayload"
+  }
+
   # Device Tree
   # DtPlatformDxe + FdtBlob 内嵌方式实测会让固件卡死在 logo（2026-10-26），
   # 保持关闭。设备树改由 boot.img 尾部追加（append_dtb = true）。
