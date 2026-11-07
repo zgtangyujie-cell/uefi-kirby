@@ -220,17 +220,18 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       echo "PROBE: llvm-nm=$(command -v llvm-nm || echo MISSING) clang=$(command -v clang || echo MISSING)"
       #
       # Progress so far, each step measured without a screen:
-      #   c5d38a4  --reset-delay 6          reset -> CPU got through the MMU
-      #   d1a26d7  reset after _PE_init_platform in _arm_init -> returned
+      #   c5d38a4  --reset-delay 6                          CPU got through the MMU
+      #   d1a26d7  after _PE_init_platform in _arm_init     1st call returned
+      #   dc76c75  before _machine_startup in _arm_init     NO reset
       #
-      # Next checkpoint: reset just before _arm_init calls _machine_startup
-      # (bl at 0xfffffff0079b3e90).  machine_startup never returns, so
-      # --reset-after would never fire; --reset-before is the only usable form.
-      # A reset means control reached the call; no reset means the kernel dies
-      # between PE_init_platform returning and this call.
+      # dc76c75's miss narrows the death to the 20-odd calls between the first
+      # PE_init_platform and machine_startup (full list in CHANNEL #181).  The
+      # two most suspicious are serial_init/switch_to_serial_console (no UART
+      # on this board) and PE_create_console (which we patch).  Test the later
+      # one first: if PE_create_console returns, the hook moves past it.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _machine_startup --in _arm_init --reset-before ||
+        --reset-after _PE_create_console --in _arm_init ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
