@@ -257,7 +257,7 @@ VolumeSizeAt (
   Bytes = (UINT64)ReadUnaligned32 ((CONST UINT32 *)(Sector + FAT_SECTORS_OFF));
   //
   // Volumes under 32 MiB store the sector count in the 16-bit field at 19 and
-  // leave the 32-bit one at 32 zero.  The embedded 32 KiB payload is one of
+  // leave the 32-bit one at 32 zero.  The embedded 8 KiB payload is one of
   // those: reading only the 32-bit field would size it as zero bytes and the
   // volume would be thrown away as "not ours".
   //
