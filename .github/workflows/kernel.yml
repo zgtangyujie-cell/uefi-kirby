@@ -17,6 +17,9 @@ on:
       - 'devices/**'
       - '.github/workflows/kernel.yml'
 
+permissions:
+  contents: write
+
 defaults:
   run:
     shell: bash
