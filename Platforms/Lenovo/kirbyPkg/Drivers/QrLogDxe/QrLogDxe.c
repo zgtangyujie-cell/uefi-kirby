@@ -126,9 +126,36 @@ STATIC EFI_GUID  mUnicodeCollationGuid = {
 // EFI_UNICODE_COLLATION2_PROTOCOL.  Fat's InitializeUnicodeCollationSupport
 // looks for this one first and only falls back to the v1 GUID above.
 //
+// Last byte is 0x49.  It was 0xB6 for three builds, which made every capture
+// read "UniColl2=0" and sent the whole investigation after EnglishDxe -- the
+// protocol may have been installed the entire time.  Verify against
+// MdePkg/Include/Protocol/UnicodeCollation.h before touching this again:
+//   EFI_UNICODE_COLLATION_PROTOCOL2_GUID
+//     { 0xa4c751fc, 0x23ae, 0x4c3e, { 0x92, 0xe9, 0x49, 0x64,
+//                                      0xcf, 0x63, 0xf3, 0x49 } }
+//
 STATIC EFI_GUID  mUnicodeCollation2Guid = {
-  0xA4C751FC, 0x23AE, 0x4C3E, { 0x92, 0xE9, 0x49, 0x64, 0xCF, 0x63, 0xF3, 0xB6 }
+  0xA4C751FC, 0x23AE, 0x4C3E, { 0x92, 0xE9, 0x49, 0x64, 0xCF, 0x63, 0xF3, 0x49 }
 };
+
+STATIC
+UINTN
+CountProtocol (
+  IN EFI_GUID  *Guid
+  )
+{
+  EFI_HANDLE  *Handles;
+  UINTN       Count;
+
+  Handles = NULL;
+  Count   = 0;
+  if (EFI_ERROR (gBS->LocateHandleBuffer (ByProtocol, Guid, NULL, &Count, &Handles))) {
+    return 0;
+  }
+
+  FreePool (Handles);
+  return Count;
+}
 
 STATIC
 VOID
@@ -136,80 +163,84 @@ ReportProtocols (
   VOID
   )
 {
-  EFI_STATUS  Status;
-  EFI_HANDLE  *Handles;
-  UINTN       Count;
-  UINTN       Index;
+  EFI_STATUS             Status;
+  EFI_HANDLE             *Handles;
+  UINTN                  Count;
+  UINTN                  Index;
+  EFI_BLOCK_IO_PROTOCOL  *BlkIo;
+  UINT8                  *Buf;
+  UINT8                  *Bpb;
 
   //
-  // EnglishDxe produces EFI_UNICODE_COLLATION2_PROTOCOL only behind this
-  // feature PCD.  If it reads FALSE here, the DSC override did not reach the
-  // module's AutoGen and the driver installs nothing while returning success.
+  // One connect pass over every handle.  The ramdisk's BlockIo appears during
+  // driver dispatch, long after BDS's last ConnectController, so DiskIoDxe and
+  // Fat are never asked to bind it.
   //
-  DEBUG ((DEBUG_ERROR, "QrLog: PcdUniColl2=%u\n", (UINT32)FeaturePcdGet (PcdUnicodeCollation2Support)));
-
   Handles = NULL;
   Count   = 0;
-  Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiBlockIoProtocolGuid, NULL, &Count, &Handles);
-  DEBUG ((DEBUG_ERROR, "QrLog: BlockIo=%u %r\n", (UINT32)Count, Status));
-  if (Handles != NULL) {
-    FreePool (Handles);
-  }
-
-  Handles = NULL;
-  Count   = 0;
-  //
-  // Force a connect pass over EVERY handle, not just the BlockIo one.
-  // EnglishDxe only publishes UnicodeCollation when its DriverBindingStart
-  // runs, and nothing has asked it to at this point; FatDriverBindingStart then
-  // fails on its very first statement ("InitializeUnicodeCollationSupport") and
-  // never opens the volume at all -- which is why every payload looked rejected
-  // no matter how the FAT image was built.
-  //
   if (!EFI_ERROR (gBS->LocateHandleBuffer (AllHandles, NULL, NULL, &Count, &Handles))) {
     for (Index = 0; Index < Count; Index++) {
       gBS->ConnectController (Handles[Index], NULL, NULL, TRUE);
     }
-    FreePool (Handles);
-    Handles = NULL;
-  }
 
-  Count   = 0;
-  Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiDiskIoProtocolGuid, NULL, &Count, &Handles);
-  DEBUG ((DEBUG_ERROR, "QrLog: DiskIo=%u %r\n", (UINT32)Count, Status));
-  if (Handles != NULL) {
-    FreePool (Handles);
-  }
-
-  Handles = NULL;
-  Count   = 0;
-  Status  = gBS->LocateHandleBuffer (ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &Count, &Handles);
-  DEBUG ((DEBUG_ERROR, "QrLog: SimpleFs=%u %r\n", (UINT32)Count, Status));
-  if (Handles != NULL) {
     FreePool (Handles);
   }
 
   //
-  // FatDriverBindingStart bails out with EFI_UNSUPPORTED before touching the
-  // volume when InitializeUnicodeCollationSupport cannot find this protocol,
-  // and prints nothing while doing it.  Zero here means EnglishDxe never
-  // dispatched, which makes any FAT image look "rejected".
+  // One line, so the answer survives the 600-byte QR slice.
   //
-  Handles = NULL;
-  Count   = 0;
-  Status  = gBS->LocateHandleBuffer (ByProtocol, &mUnicodeCollationGuid, NULL, &Count, &Handles);
-  DEBUG ((DEBUG_ERROR, "QrLog: UniColl=%u %r\n", (UINT32)Count, Status));
-  if (Handles != NULL) {
-    FreePool (Handles);
+  DEBUG ((
+    DEBUG_ERROR,
+    "QrLog: pcd2=%u blkio=%u diskio=%u fs=%u uc1=%u uc2=%u\n",
+    (UINT32)FeaturePcdGet (PcdUnicodeCollation2Support),
+    (UINT32)CountProtocol (&gEfiBlockIoProtocolGuid),
+    (UINT32)CountProtocol (&gEfiDiskIoProtocolGuid),
+    (UINT32)CountProtocol (&gEfiSimpleFileSystemProtocolGuid),
+    (UINT32)CountProtocol (&mUnicodeCollationGuid),
+    (UINT32)CountProtocol (&mUnicodeCollation2Guid)
+    ));
+
+  //
+  // If UnicodeCollation is present but Fat still refuses, the next suspect is
+  // the volume itself.  Read LBA 0 through BlockIo and print the boot sector
+  // fields Fat validates, so "Fat never ran" and "Fat read a BPB it dislikes"
+  // stop looking the same on a photograph.
+  //
+  Buf = AllocatePool (512);
+  if (Buf == NULL) {
+    return;
   }
 
   Handles = NULL;
   Count   = 0;
-  Status  = gBS->LocateHandleBuffer (ByProtocol, &mUnicodeCollation2Guid, NULL, &Count, &Handles);
-  DEBUG ((DEBUG_ERROR, "QrLog: UniColl2=%u %r\n", (UINT32)Count, Status));
-  if (Handles != NULL) {
+  if (!EFI_ERROR (gBS->LocateHandleBuffer (ByProtocol, &gEfiBlockIoProtocolGuid, NULL, &Count, &Handles))) {
+    for (Index = 0; (Index < Count) && (Index < 2); Index++) {
+      Status = gBS->HandleProtocol (Handles[Index], &gEfiBlockIoProtocolGuid, (VOID **)&BlkIo);
+      if (EFI_ERROR (Status) || (BlkIo->Media == NULL) || !BlkIo->Media->MediaPresent) {
+        continue;
+      }
+
+      ZeroMem (Buf, 512);
+      Status = BlkIo->ReadBlocks (BlkIo, BlkIo->Media->MediaId, 0, 512, Buf);
+      Bpb    = Buf;
+      DEBUG ((
+        DEBUG_ERROR,
+        "QrLog: blk%u bs=%u last=%lu rd=%r jmp=%02x bps=%u spc=%u tot=%u\n",
+        (UINT32)Index,
+        (UINT32)BlkIo->Media->BlockSize,
+        (UINT64)BlkIo->Media->LastBlock,
+        Status,
+        (UINT32)Bpb[0],
+        (UINT32)(*(UINT16 *)(Bpb + 11)),
+        (UINT32)Bpb[13],
+        (UINT32)(*(UINT32 *)(Bpb + 32))
+        ));
+    }
+
     FreePool (Handles);
   }
+
+  FreePool (Buf);
 }
 
 STATIC
@@ -460,13 +491,17 @@ QrLogDxeEntry (
   // QR_FRAME_DELAY_US (6 s) to hold each rotating frame on screen, which is
   // pointless for a single frame.
   //
+  //
+  // Probe before drawing.  DrawFrame() slices the tail of KLOG, so any DEBUG
+  // emitted after it never reaches the QR -- only the panel as text.
+  //
+  ReportProtocols ();
+
   DrawFrame ();
   WriteBackInvalidateDataCacheRange (
     (VOID *)(UINTN)KIRBY_PANEL_BASE,
     (UINTN)KIRBY_PANEL_W * KIRBY_PANEL_H * 4
     );
-
-  ReportProtocols ();
 
   //
   // Hold the panel for a capture.  The payload volume is published now
