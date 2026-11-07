@@ -64,16 +64,36 @@ evidence = []
 
 [[area]]
 id = "storage"
-status = "planned"
+status = "in_progress"
 components = []
-paths = ["drivers/ShengUfs", "scripts/*ufs*", "scripts/*storage*", "scripts/*userdata*", "scripts/*root*"]
-inputs = ["Identify the storage and root hardware, resources and existing component interfaces for this board."]
-configuration = ["Record the board.toml fields, DTS properties and defconfig values used for storage and root."]
-procedure = ["Follow the storage and root stage in the porting guide and record the actual commands."]
-findings = ["Collect the first storage and root observation, its cause when established, and the resulting implementation decision."]
+paths = ["dts/**", "patches/xnu/**", "configs/tb321fu_defconfig", "drivers/ShengUfs", "scripts/*ufs*", "scripts/*storage*", "scripts/*userdata*", "scripts/*root*"]
+inputs = [
+  "Controller/PHY windows measured from the SoC dtsi, not guessed: ufshc@1d84000 reg <0 0x1d84000 0 0x3000>, phy@1d80000 reg <0 0x1d80000 0 0x2000>. SM8550 and SM8250 export the same windows, which is why the ported driver's UFS_MMIO_BASE needed no change.",
+  "userdata GPT read on the device (root, read-only): 123365376 sectors, 4096/4096 bytes; partition 16 userdata 3613096..123365370. Single LUN, all 16 partitions on LUN 0.",
+]
+configuration = [
+  "board.toml [userdata] first_lba=3613096 last_lba=123365370 lba_bytes=4096, all three now measured.",
+  "DTS enables ufshc/ufsphy and renames the ADT node to kirby-ufs (the driver looks it up by name); compatible lists sm8650 first and sm8550 second because SM8550's UFS transport is the same.",
+  "defconfig keeps CONFIG_XNU_NATIVE_UFS off: storage is a BSD bdevsw driver from patches/xnu/kirby-ufs.patch, not the ShengUfs component. kernel_args add rd=ufsroot0 ufsroot=userdata.",
+]
+procedure = [
+  "https://unixnu.com/zh/porting/ufs read first; its recommended ShengUfs component cannot link here because NativeUfsBlock inherits IOBlockStorageDevice from IOStorageFamily, which only ships in the prelinked kernelcache kexts and this board builds with --skip-prelink.",
+  "Ported UniXNU-kebab's bsd/dev/kebab_ufs.c through scripts/make-kirby-ufs-patch.py; the generator keeps the hunk counts consistent and rewrites the arm-io offset handling.",
+  "Boot with the entry probe resetting after _IOFindBSDRoot in _bsd_init; a reset means the root device was found, staying dark means the driver failed and panicked (XNU parks on panic by default).",
+]
+findings = [
+  "The ADT carries reg as an offset from the arm-io base, not an absolute address: devicetree.py:254 stores (physical - arm_io_window base) and the base here is 0x1000000, so /kirby-ufs arrives as 0xd84000 and 0x1d84000 appears nowhere in the sidecar. kebab's absolute-address check would have panicked on every boot.",
+  "The kernel link failure that alternated between success and failure was mockfs, not this driver: ipados.config sets CONFIG_XNU_SOURCE_MOCKFS=y, build-xnu-4k-baseline.sh puts -DMOCKFS=1 on vfs_conf.o alone, and libmockfs_fixture.a only sometimes joined the link. The board defconfig now unsets it.",
+]
 completion = ["Host: register, clock, link and SMMU facts match the board inventory.", "Reads: SCSI capacity, GPT and known blocks are correct; OS/SystemOS windows stay within userdata.", "Root: the configured volume mounts and launchd starts. Persistence: writes survive reboot within the allocated Data region."]
-limits = ["Hardware inputs and implementation are pending for this example board."]
-next_action = ["Inventory the required storage and root inputs before implementation."]
+limits = [
+  "Not yet observed on hardware: the driver compiles and links (symbols kirby_ufs_init / kirby_ufs_rootdev are in kernel.macho) but the tablet has been wedged since the _IOFindBSDRoot run and needs a power cycle.",
+  "Even a working read cannot mount a root volume: userdata currently holds Android f2fs/ext4 with no APFS container, and writing the OS/SystemOS windows into it needs the owner's explicit go-ahead.",
+]
+next_action = [
+  "Power cycle the tablet, boot the image whose kernel carries the arm-io fix, and read the reset-vs-dark signal for _IOFindBSDRoot.",
+  "If the driver panics, add band-coded failure points to kirby_ufs_init so the screen shows which step failed without a serial console.",
+]
 evidence = []
 
 [[area]]
