@@ -393,6 +393,43 @@ if ! git apply --reverse --check "$ROOT/patches/uefi-parent.diff" 2>/dev/null; t
   git apply "$ROOT/patches/uefi-parent.diff"
 fi
 
+#
+# Ride along in the kernel section.
+#
+# The bootloader does not load the boot image's ramdisk on this tablet -- the
+# initrd range in the device tree still points at the previous Android boot's
+# cpio archive, 440 MB of conventional memory holds no TB321FUESP volume, and
+# neither does the 256 MB "Kernel" window ABL loads the boot image into.  What
+# it *does* load is the kernel section, verbatim, into that window.
+#
+# So append the payload after the firmware volume inside the kernel section:
+# BootShim + FD + payload, all gzipped as one stream by mkbootimg.  At runtime
+# it sits right after the FD copy and is found by scanning the kernel window for
+# the volume label -- no ramdisk, no FV2, no partition writes, and unlike the
+# compiled-in blob it is not limited to a few kilobytes.
+#
+python3 - <<'KERNELEOF'
+import pathlib
+p = pathlib.Path("build_uefi.py")
+text = p.read_text(encoding="utf-8")
+needle = "            combined_data = boot_shim_payload.read_bytes () + uefi_fd.read_bytes ()"
+extra = (
+    needle + "\n"
+    "            _kirby_payload = Path (\"Platforms/Lenovo/kirbyPkg/Resources/payload.bin\")\n"
+    "            if _kirby_payload.is_file ():\n"
+    "                combined_data += _kirby_payload.read_bytes ()\n"
+    "                logger.info (f\"kirby: appended {_kirby_payload.stat ().st_size} payload bytes after the FD\")\n"
+)
+if "_kirby_payload" in text:
+    print("kernel payload already patched")
+elif needle not in text:
+    print("ERROR: kernel-section needle not found")
+    raise SystemExit(1)
+else:
+    p.write_text(text.replace(needle, extra, 1), encoding="utf-8")
+    print("kernel payload appended after the FD")
+KERNELEOF
+
 # The AArch64 CLANGPDB toolchain never invokes nasm, but the EDK2 self
 # describing environment still insists on fetching it through NuGet, which runs
 # on mono here and fails. Dropping the extdep removes the requirement.
