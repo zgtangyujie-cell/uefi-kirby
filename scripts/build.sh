@@ -298,6 +298,39 @@ print("DarwinBoot: paints video0/1/2 before ExitBootServices")
 fi
 
 #
+# vcputc refuses to draw unless BSS dword 0xfffffff007b20e04 is non-zero:
+#
+#   0xfffffff0073be7b0  ldr w8, [x19, #0xe04]
+#   0xfffffff0073be7b4  cbz w8, 0xfffffff0073bedb0     <- no draw
+#
+# The only writer is vc_progress_set (0xfffffff0073c1340):
+#   eor w8, w20, #1 ; str w8, [x9, #0xe04]
+# and that path only runs when the progress bar timer is armed, which needs
+# _PE_initialize_console -- a function with zero call sites in this kernel.
+# So the gate stays at its BSS value 0 and every printf is swallowed.
+#
+# Set it once from DarwinBoot, before ExitBootServices.  Address:
+#   PA = Address + (0xFFFFFFF007B20E04 - Kernel.Base)
+#
+if [ -f "$DARWINBOOT_C" ]; then
+  python3 -c '
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+t = p.read_text()
+if "KirbyVcGate" in t:
+    sys.exit(0)
+needle = "DiagDraw (KirbyDiag, 6); }"
+if needle not in t:
+    sys.exit("KirbyDiag paint block not found in DarwinBoot.c")
+gate = "\n  KirbyVcGate: *(volatile UINT32 *)(UINTN)(Address + (0xFFFFFFF007B20E04ULL - Kernel.Base)) = 1;"
+t = t.replace(needle, needle + gate, 1)
+p.write_text(t)
+print("DarwinBoot: opens the vcputc gate at b20e04")
+' "$DARWINBOOT_C" || { log "DarwinBoot vcputc gate patch failed"; exit 1; }
+fi
+
+#
 # Menu.c: after a failed boot the menu must not wait forever.  BDS leaves a
 # ConIn handle behind even when "Connect ConIn" failed, so CountInputDevices()
 # reports > 0; Main.c:169 then sets Countdown = FALSE and Menu.c:114 hands
