@@ -149,6 +149,19 @@ cp    "$ROOT/Resources/Configs/kirby.toml" Resources/Configs/
 # the 8.3 spelling, so "UniXNU" was stored as plain "UNIXNU" -- and this
 # firmware's Fat does not fold case (measured: `toml lo=Not Found up=Success`).
 #
+#
+# The payload step needs scripts from the UniXNU tree (patch-pe-console lives
+# here, patch-xnu-entry-probe lives there).  Clone it before the payload block
+# rather than at the firmware stage further down, otherwise the entry probe
+# check sees no script yet and silently skips.  The later clone is guarded by
+# the same .git test, so this only moves the first clone earlier.
+#
+UNIXNU_URL=${UNIXNU_URL:-https://github.com/UniXNU/UniXNU.git}
+if [ ! -d "$WORK/unixnu/.git" ]; then
+  log "cloning UniXNU early for the payload scripts"
+  git clone "$UNIXNU_URL" "$WORK/unixnu"
+fi
+
 log "building the payload volume"
 #
 # The kernel is not committed: it is a 52 MB Apple-derived binary.  Take it from
@@ -182,7 +195,14 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
     # kernel get" instead of "did printf print anything".  UNIXNU_UEFI supplies
     # Mu-Silicium's Font.h for the panic screen.
     #
-    ENTRY_PROBE="$WORK/unixnu/scripts/patch-xnu-entry-probe.py"
+    #
+    # Vendored copy, not $WORK/unixnu/scripts: this block runs about seventy
+    # lines before the UniXNU checkout is cloned, so the tree path does not
+    # exist yet and the guard below silently took the else branch on every
+    # run -- which is why 9d2c207, 5e9a0f3 and 35405bd all shipped an
+    # untouched _start while the build kept succeeding.
+    #
+    ENTRY_PROBE="$ROOT/scripts/patch-xnu-entry-probe.py"
     if [ -f "$ENTRY_PROBE" ]; then
       #
       # The probe shells out to llvm-nm / clang / ld.lld / llvm-objcopy /
@@ -210,7 +230,8 @@ if word == 0x140006F5:
 print(f"_start now {word:#010x}")
 PY
     else
-      log "entry probe script not present; kernel ships without colour bars"
+      log "entry probe script missing at $ENTRY_PROBE; refusing to ship a kernel without colour bars"
+      exit 1
     fi
   fi
 else
