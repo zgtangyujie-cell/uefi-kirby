@@ -240,7 +240,7 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       # unambiguous this time.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _early_random --in _arm_init ||
+        --reset-after _machine_startup --in _arm_init --reset-before ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
