@@ -556,7 +556,7 @@ QrLogDxeEntry (
   // hang, and the only way out was a power cycle.  Nothing here needs more than
   // a few minutes to be photographed.
   //
-  for (UINTN Round = 0; Round < 240; Round++) {
+  for (UINTN Round = 0; Round < 60; Round++) {
     gBS->Stall (1000000);
   }
 

@@ -164,7 +164,7 @@ APRIORI DXE {
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/PmicGlinkDxe/PmicGlinkDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  INF Binaries/kirby/QcomPkg/Drivers/UsbPwrCtrlDxe/UsbPwrCtrlDxe.inf
+  # INF Binaries/kirby/QcomPkg/Drivers/UsbPwrCtrlDxe/UsbPwrCtrlDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/QcomChargerDxe/QcomChargerDxeLA.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
@@ -193,6 +193,7 @@ APRIORI DXE {
   # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
   # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
   INF Binaries/kirby/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
+  INF Binaries/kirby/QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
   # 【单变量实验结论 2026-11-06 16:15，b8b90bc 实测】ButtonsDxe 依赖 TZ/QSEE
   # （PMIC SDAM / PON），fastboot boot 下 SCM 不可用 → 自身 ASSERT_EFI_ERROR
   # (ASSERT AutoGen.c +469, ERROR C9000002:V03000007)。同 SCM 三件套，退回。
@@ -236,12 +237,6 @@ APRIORI DXE {
   # payload before BDS runs its connect pass, so the tail is the right place.
   #
   INF kirbyPkg/Drivers/KirbyInitrdDxe/KirbyInitrdDxe.inf
-
-  #
-  # Must run after KirbyInitrdDxe: UsbMsdDxe exports block devices as LUNs, and it
-  # enumerates when it starts.  Earlier in the list there is no volume to export.
-  #
-  INF Binaries/kirby/QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
 
   INF kirbyPkg/Drivers/QrLogDxe/QrLogDxe.inf
 }
