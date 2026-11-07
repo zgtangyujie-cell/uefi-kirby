@@ -195,9 +195,12 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
         if [ -d "$_llvmbin" ]; then PATH="$_llvmbin:$PATH"; fi
       done
       export PATH
+      echo "PROBE: script $ENTRY_PROBE"
+      echo "PROBE: kernel $KERNEL_TMP ($(wc -c < "$KERNEL_TMP") bytes)"
+      echo "PROBE: llvm-nm=$(command -v llvm-nm || echo MISSING) clang=$(command -v clang || echo MISSING)"
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" --no-reset ||
-        { log "entry probe install failed"; exit 1; }
-      log "entry probe installed; verifying _start moved"
+        { echo "PROBE: install failed"; exit 1; }
+      echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
 import struct, sys
 d = open(sys.argv[1], 'rb').read()
