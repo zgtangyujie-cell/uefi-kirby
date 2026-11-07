@@ -174,6 +174,21 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
   if [ -s "$KERNEL_TMP" ]; then
     python3 "$ROOT/scripts/patch-pe-console.py" "$KERNEL_TMP" ||
       { log "PE_create_console patch failed; refusing to ship an unpatched kernel"; exit 1; }
+    #
+    # Official entry probe: stage code goes into the zero padding after `_start`
+    # (which is a single `b`), displaced instructions are re-executed there.
+    # It draws a blue bar once the kernel entry actually runs and a magenta bar
+    # just before the MMU comes on, so the panel answers "how far did the
+    # kernel get" instead of "did printf print anything".  UNIXNU_UEFI supplies
+    # Mu-Silicium's Font.h for the panic screen.
+    #
+    ENTRY_PROBE="$WORK/unixnu/scripts/patch-xnu-entry-probe.py"
+    if [ -f "$ENTRY_PROBE" ]; then
+      UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" --panic-screen --no-reset ||
+        { log "entry probe install failed"; exit 1; }
+    else
+      log "entry probe script not present; kernel ships without colour bars"
+    fi
   fi
 else
   log "no kernel-out branch; the payload will carry the config only"
