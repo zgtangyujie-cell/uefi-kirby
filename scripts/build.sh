@@ -219,13 +219,19 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       echo "PROBE: kernel $KERNEL_TMP ($(wc -c < "$KERNEL_TMP") bytes)"
       echo "PROBE: llvm-nm=$(command -v llvm-nm || echo MISSING) clang=$(command -v clang || echo MISSING)"
       #
-      # stage 1/2 are already proven on the panel (blue band 1, magenta band 2,
-      # and DiagDraw showed Video[0] = 0x3E100000).  Now add stage 3: wait six
-      # seconds right after the MMU comes on, then PSCI SYSTEM_RESET.  A reboot
-      # after roughly that delay means the CPU got through the MMU enable; no
-      # reboot means it died at the enable itself.
+      # Stage 3 already answered its question: c5d38a4 reset back to Android
+      # six seconds after the MMU came on, while 88c6a55 (--no-reset) stayed
+      # parked.  Same kernel, same ADT, only the probe differs -- so the CPU
+      # really does get through the MMU enable.
       #
-      UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" --reset-delay 6 ||
+      # Now move the checkpoint one function further: reset right after
+      # _PE_init_platform returns inside _arm_init.  That symbol is called from
+      # exactly one site (0xfffffff0079b3a98), so no --occurrence is needed.
+      # A reset means PE_init_platform returned; no reset means the kernel dies
+      # inside it, which is where the ADT node set starts to matter.
+      #
+      UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
+        --reset-after _PE_init_platform --in _arm_init ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
