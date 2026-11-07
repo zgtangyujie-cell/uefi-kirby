@@ -75,6 +75,16 @@ STATIC CONST CHAR8  mLabel[FAT_LABEL_LEN] = {
 // clusters, which is 2 MiB even at one sector per cluster, and the firmware
 // volume has no room for that.
 //
+//
+// EFI_FIRMWARE_VOLUME2_PROTOCOL, spelled out for the same reason the
+// UnicodeCollation GUIDs are: the symbolic name is not declared in any .dec
+// this platform includes, and the link fails with
+// "undefined symbol: gEfiFirmwareVolume2ProtocolGuid".
+//
+STATIC EFI_GUID  mFirmwareVolume2Guid = {
+  0x220E73B6, 0x6BDB, 0x4413, { 0x84, 0x05, 0xB9, 0x74, 0xB8, 0xBA, 0x6B, 0x08 }
+};
+
 STATIC CONST EFI_GUID  mPayloadGuid = {
   0x7B1E4C62, 0x2D5A, 0x4F83, { 0x9E, 0x71, 0x3C, 0x8A, 0x5D, 0x0B, 0x6F, 0x24 }
 };
@@ -475,7 +485,7 @@ FindEmbedded (
 
   Status = gBS->LocateHandleBuffer (
                   ByProtocol,
-                  &gEfiFirmwareVolume2ProtocolGuid,
+                  &mFirmwareVolume2Guid,
                   NULL,
                   &Count,
                   &Handles
@@ -485,7 +495,7 @@ FindEmbedded (
   }
 
   for (Index = 0; Index < Count; Index++) {
-    Status = gBS->HandleProtocol (Handles[Index], &gEfiFirmwareVolume2ProtocolGuid, (VOID **)&Fv);
+    Status = gBS->HandleProtocol (Handles[Index], &mFirmwareVolume2Guid, (VOID **)&Fv);
     if (EFI_ERROR (Status)) {
       continue;
     }
