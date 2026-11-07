@@ -82,6 +82,7 @@ procedure = [
   "Boot with the entry probe resetting after _IOFindBSDRoot in _bsd_init; a reset means the root device was found, staying dark means the driver failed and panicked (XNU parks on panic by default).",
 ]
 findings = [
+  "offline-apfs-load=1 is what registers APFS. The kernel string table lists it immediately before com.apple.filesystems.apfs in the kext table bsd_autoconf walks, so prelink alone puts the code in the kernel while this boot-arg is what makes its vfsops reachable from vfs_mountroot. Without it the symptom is indistinguishable from having no APFS at all.",
   "prelink works and fits: dropping --skip-prelink produced a 51,695,616-byte kernel (49.3 MiB) carrying com.apple.filesystems.apfs, IOStorageFamily, AppleAPFSContainer and apfs_mount. The earlier claim that a 65 MiB prelinked span could not fit the 256 MiB window was a judgement, never a measurement, and it was the only reason this board had no APFS at all.",
   "The ADT carries reg as an offset from the arm-io base, not an absolute address: devicetree.py:254 stores (physical - arm_io_window base) and the base here is 0x1000000, so /kirby-ufs arrives as 0xd84000 and 0x1d84000 appears nowhere in the sidecar. kebab's absolute-address check would have panicked on every boot.",
   "The kernel link failure that alternated between success and failure was mockfs, not this driver: ipados.config sets CONFIG_XNU_SOURCE_MOCKFS=y, build-xnu-4k-baseline.sh puts -DMOCKFS=1 on vfs_conf.o alone, and libmockfs_fixture.a only sometimes joined the link. The board defconfig now unsets it.",
