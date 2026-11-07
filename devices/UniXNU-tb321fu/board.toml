@@ -130,6 +130,10 @@ header_version = 4
 #    位置，官方 guide/boot 同样是 ./unixnu bootimg --ramdisk none。
 #    阶段 1（UEFI 亮屏）不需要 payload：fastboot boot 只吃 boot.img，BootShim 在
 #    kernel 段，今天已实测可进 UEFI。
+# 触发 kernel.yml 重跑的标记行；kernel.yml 只监听 devices/** 的变化。
+# 上一轮 aa319de 的构建倒在 mockfs 未定义（vfs_conf.o 的 vfstbllist 需要
+# mockfs_mountroot / mockfs_vfsops / mockfs_vnodeop_opv_desc），
+# 而同一份 archives 在前一轮是成功的，属于间歇性失败。
 volume = "TB321FUESP"      # FAT 卷标 ≤ 11 字符
 size_mib = 256
 loader = "firmware"
