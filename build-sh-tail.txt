@@ -1,0 +1,48 @@
+
+=== workspace /home/runner/work/_temp/work (target DEBUG)
+
+=== checking out 3aa95a72d469234755e2bcf2841ec6c0e83863e9
+HEAD is now at 3aa95a72 S5E9810: Update Hypervisor Binary
+
+=== applying the SEC entry-argument patch
+Updated 0 paths from the index
+patched ModuleEntryPoint.S
+patched Sec.c
+patched Sec.inf
+patched SiliciumPkg.dec
+ Mu_Basecore                                        |   0
+ .../SiliciumPkg/Sec/AArch64/ModuleEntryPoint.S     | 137 ++++----
+ Silicon/Silicium/SiliciumPkg/Sec/Sec.c             | 353 +++++++++++----------
+ Silicon/Silicium/SiliciumPkg/Sec/Sec.inf           | 139 ++++----
+ Silicon/Silicium/SiliciumPkg/SiliciumPkg.dec       |   1 +
+ 5 files changed, 324 insertions(+), 306 deletions(-)
+
+=== installing the kirby device package
+
+=== cloning UniXNU early for the payload scripts
+Cloning into '/home/runner/work/_temp/work/unixnu'...
+
+=== building the payload volume
+
+=== kernel from kernel-out: 19099024 bytes
+  +0x48: 0xb9400008 -> 0x52800008  (ldr w8,[x0] -> mov w8,#0)
+  +0x64: 0x54000180 -> 0x1400000c  (b.eq -> b (skip bzero))
+  +0xa4: 0x1a941681 -> 0x528000a1  (cinc w1,w20,cond -> mov w1,#5)
+PE_create_console at 0xfffffff00794a828: 3 instruction(s) patched
+/home/runner/work/uefi-kirby/uefi-kirby/scripts/xnu-console.c:327:10: fatal error: 'Font.h' file not found
+  327 | #include "Font.h"
+      |          ^~~~~~~~
+1 error generated.
+Traceback (most recent call last):
+  File "/home/runner/work/uefi-kirby/uefi-kirby/scripts/patch-xnu-console.py", line 163, in <module>
+    main()
+  File "/home/runner/work/uefi-kirby/uefi-kirby/scripts/patch-xnu-console.py", line 145, in main
+    code, load, entry, beat = assemble(ROOT / "scripts" / "xnu-console.c", cave, Path(tmp), vinfo_va,
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/uefi-kirby/uefi-kirby/scripts/patch-xnu-console.py", line 80, in assemble
+    subprocess.run([clang, "--target=aarch64-none-elf", "-ffreestanding", "-fno-builtin",
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/usr/bin/clang', '--target=aarch64-none-elf', '-ffreestanding', '-fno-builtin', '-fno-stack-protector', '-mgeneral-regs-only', '-fno-pic', '-mcmodel=tiny', '-Oz', '-DVINFO=0xfffffff007ab6970UL', '-DMACHINE_IDLE=0xfffffff0073f3a78UL', '-DPAGE_TOTAL=0xfffffff007ab671cUL', '-DPAGE_FREE=0xfffffff007ab66f8UL', '-I/home/runner/work/uefi-kirby/uefi-kirby/scripts/fbconsole', '-c', PosixPath('/home/runner/work/uefi-kirby/uefi-kirby/scripts/xnu-console.c'), '-o', PosixPath('/tmp/tmp7kk7m94f/console.o')]' returned non-zero exit status 1.
+
+=== xnu-console patch failed; refusing to ship a kernel with no console
