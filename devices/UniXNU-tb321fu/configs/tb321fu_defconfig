@@ -9,3 +9,14 @@ CONFIG_XNU_CRYPTO_BOOTSTRAP="prelinked"
 # CONFIG_XNU_NATIVE_ADRENO is not set
 # CONFIG_XNU_NATIVE_UFS is not set —— 存储走 patches/xnu/kirby-ufs.patch 的
 # BSD bdevsw 驱动，不是 ShengUfs 组件，所以这个开关保持关闭。
+#
+# 覆盖 profiles/os/ipados-17.7.11-21H461/configs/ipados.config 里的
+# CONFIG_XNU_SOURCE_MOCKFS=y（defconfig 拼在 fragments 之后，后写的生效，
+# 见 scripts/unixnu/cli.py:120-132）。
+# mockfs 是「最小可执行根文件系统」的离线测试夹具，这台机器不需要。
+# 而 build-xnu-4k-baseline.sh:244-260 只给 vfs_conf.o 单独加 -DMOCKFS=1，
+# mockfs 的实现体来自 build-mockfs-fixture.py 打的 libmockfs_fixture.a，
+# 这个归档在 CI 上时而链得上、时而链不上（两轮成功、两轮倒在
+# "mockfs_mountroot / mockfs_vfsops / mockfs_vnodeop_opv_desc" 未定义）。
+# 关掉它，把这条不稳定的链接路径整条去掉。
+# CONFIG_XNU_SOURCE_MOCKFS is not set
