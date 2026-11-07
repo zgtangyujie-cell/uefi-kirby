@@ -68,15 +68,22 @@ jobs:
               echo 'python:'; python3.12 --version
             } >> "$GITHUB_STEP_SUMMARY"
             {
-              echo "run $GITHUB_RUN_ID, step 'Select the device', commit $GITHUB_SHA"
-              echo '```'
-              echo "$out" | tail -60
-              echo '```'
-            } > /tmp/err.md
-            pip3.12 --version >/dev/null 2>&1 || true
-            GH_TOKEN="${{ github.token }}" gh issue create \
-              --title "kernel build log: defconfig" \
-              --body-file /tmp/err.md || true
+              echo "run $GITHUB_RUN_ID step 'Select the device' commit $GITHUB_SHA"
+              echo "$out"
+              echo '--- env ---'
+              command -v python3.12 || echo 'python3.12 MISSING'
+              python3.12 --version 2>&1 || true
+              ls -la ../UniXNU-tb321fu | head -20
+              ls ../UniXNU-tb321fu/configs || true
+            } > /tmp/err.txt
+            # Publish to a branch: the run page needs a session, this does not.
+            mkdir -p /tmp/pub && cp /tmp/err.txt /tmp/pub/defconfig-error.txt
+            cd /tmp/pub
+            git init -q
+            git -c user.email=ci@example.com -c user.name=ci checkout -q -b kernel-log
+            git add -A
+            git -c user.email=ci@example.com -c user.name=ci commit -qm "defconfig error"
+            git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" kernel-log || true
             exit $rc
           fi
 
