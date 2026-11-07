@@ -133,3 +133,25 @@ jobs:
             devices/UniXNU/out/**/*.log
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Publish the run state
+        if: always()
+        working-directory: devices/UniXNU
+        run: |
+          set +e
+          {
+            echo "commit ${GITHUB_SHA}"
+            echo "job ${GITHUB_JOB}"
+            echo "started at $(date -u +%FT%TZ)"
+            echo "--- out/ ---"
+            ls -l out/*/*/*/kernel 2>/dev/null || echo "no kernel directory"
+            echo "--- build log tail ---"
+            tail -40 /tmp/build.log 2>/dev/null || echo "no /tmp/build.log"
+          } > /tmp/state.txt
+          mkdir -p /tmp/pub && cp /tmp/state.txt /tmp/pub/kernel-state.txt
+          cd /tmp/pub
+          git init -q
+          git -c user.email=ci@example.com -c user.name=ci checkout -q -b kernel-log
+          git add -A
+          git -c user.email=ci@example.com -c user.name=ci commit -qm "run state"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" kernel-log || true
