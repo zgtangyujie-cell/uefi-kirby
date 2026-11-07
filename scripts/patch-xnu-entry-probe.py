@@ -49,14 +49,6 @@ CAVE_SIZE = 0x60
 CAVES = {1: 0xFFFFFFF00B9D0500, 2: 0xFFFFFFF00B9D0560, 3: 0xFFFFFFF00B9D05C0, 4: 0xFFFFFFF00B9D0620}
 TIMEBASE = 19200000
 
-# PE_state.bootArgs: PE_state is a PE_state_t (pexpert.h: initialized, video,
-# deviceTreeHead, bootArgs, deviceTreeSize), so bootArgs sits at +0xa0.
-# The address is taken from the kernel's own symbol table (_PE_state), not
-# hardcoded: the entry constants above were pinned for one specific kernel,
-# and a re-baselined kernel would silently paint into nothing.
-PE_STATE_SYMBOL = '_PE_state'
-PE_STATE_BOOT_ARGS_OFF = 0xA0
-
 PAINT = """
   ldr x1, [{args}, #0x28]
   ldr x2, [{args}, #0x38]
@@ -140,56 +132,15 @@ _start:
   b 1b
 """
 
-# Paint a band after a call, then keep going.  Stage 1/2 read boot_args from
-# x0/x20 because they run before PE_init_platform has stored it; a probe deep
-# inside bsd_init no longer has it in a register, so reload it from
-# PE_state.bootArgs (pexpert.h: initialized, video, deviceTreeHead, bootArgs
-# => PE_state + 0xa0).
-PAINT_PE = """
-  adrp x9, {pe_page}
-  add  x9, x9, #{pe_off}
-  ldr  x0, [x9]
-""" + PAINT + """
-"""
-
 
 def kernel_symbols(kernel):
-    """Address -> name for the kernel's symbols, read from LC_SYMTAB.
-
-    This used to shell out to llvm-nm, which is not installed on the Ubuntu
-    runner by default; when shutil.which() failed the script fell back to the
-    macOS Homebrew prefix and died with FileNotFoundError, leaving _start
-    untouched while the build kept going.  The symbol table is plain
-    LC_SYMTAB data, so read it directly and drop the tool dependency.
-    """
-    data = Path(kernel).read_bytes()
+    """Address -> name for the kernel's symbols, from llvm-nm."""
+    nm = shutil.which('llvm-nm') or '/opt/homebrew/opt/llvm/bin/llvm-nm'
     table = {}
-    ncmds = struct.unpack_from('<I', data, 16)[0]
-    offset = 32
-    symtab = None
-    for _ in range(ncmds):
-        cmd, size = struct.unpack_from('<II', data, offset)
-        if cmd == 0x2:  # LC_SYMTAB
-            symtab = struct.unpack_from('<IIII', data, offset + 8)
-        offset += size
-    if symtab is None:
-        raise SystemExit('kernel has no LC_SYMTAB; cannot resolve symbols')
-    symoff, nsyms, stroff, strsize = symtab
-    for index in range(nsyms):
-        strx, ntype, _, _, value = struct.unpack_from('<IBBHQ', data, symoff + index * 16)
-        if ntype & 0xE0:        # N_STAB: debug entries carry no address
-            continue
-        if ntype & 0x0E == 0:   # N_UNDF / N_ABS without a section
-            continue
-        if strx >= strsize:
-            continue
-        end = data.find(b'\0', stroff + strx)
-        if end < 0:
-            continue
-        name = data[stroff + strx:end].decode('utf-8', 'replace')
-        if not name:
-            continue
-        table.setdefault(value, name)
+    for line in subprocess.run([nm, '-n', kernel], capture_output=True, text=True, check=True).stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 3:
+            table.setdefault(int(parts[0], 16), parts[2])
     return table
 
 
@@ -390,26 +341,12 @@ def branch(from_va, to_va):
     return 0x14000000 | (delta & 0x3FFFFFF)
 
 
-def tool(name):
-    """Locate an LLVM tool, or say plainly which one is missing."""
-    found = shutil.which(name)
-    if found:
-        return found
-    fallback = Path('/opt/homebrew/opt/llvm/bin') / name
-    if fallback.is_file():
-        return str(fallback)
-    raise SystemExit(
-        'entry probe needs the LLVM tool %r on PATH; the probe cannot be '
-        'installed without it. On the Ubuntu runner these live under '
-        '/usr/lib/llvm-*/bin, which build.sh now prepends to PATH.' % name)
-
-
 def assemble(source, va, symbols, workdir):
     asm, obj, elf, binary = (workdir / name for name in ('cave.S', 'cave.o', 'cave.elf', 'cave.bin'))
     asm.write_text(source)
-    clang = tool('clang')
-    lld = tool('ld.lld')
-    objcopy = tool('llvm-objcopy')
+    clang = shutil.which('clang') or '/opt/homebrew/opt/llvm/bin/clang'
+    lld = shutil.which('ld.lld') or '/opt/homebrew/opt/llvm/bin/ld.lld'
+    objcopy = shutil.which('llvm-objcopy') or '/opt/homebrew/opt/llvm/bin/llvm-objcopy'
     subprocess.run([clang, '--target=aarch64-none-elf', '-c', asm, '-o', obj], check=True)
     subprocess.run([lld, f'-Ttext={va:#x}', *[f'--defsym={name}={value:#x}' for name, value in symbols.items()], '-e', '_start', obj, '-o', elf], check=True)
     subprocess.run([objcopy, '-O', 'binary', elf, binary], check=True)
@@ -426,18 +363,9 @@ def main():
     parser.add_argument('--no-reset', action='store_true', help='no reset probe at all')
     parser.add_argument('--occurrence', type=int, default=1, help='which call to SYMBOL (1 = first)')
     parser.add_argument('--in', dest='function', default='_arm_init', help='function that makes the call (default _arm_init)')
-    parser.add_argument('--paint-after', metavar='SYMBOL',
-                        help='paint a band after this call instead of resetting; '
-                             'the call still runs, then the kernel continues')
-    parser.add_argument('--paint-band', type=int, default=3,
-                        help='band index 1..16 for --paint-after (default 3)')
     args = parser.parse_args()
     if args.reset_before and not args.reset_after:
         raise SystemExit('--reset-before requires --reset-after')
-    if args.paint_after and args.reset_after:
-        raise SystemExit('--paint-after and --reset-after are mutually exclusive')
-    if args.paint_after and not (1 <= args.paint_band <= 16):
-        raise SystemExit('--paint-band must be 1..16')
     data = bytearray(args.kernel.read_bytes())
     load_segments(data)
     kernel_names = rebase(args.kernel, data)
@@ -458,21 +386,6 @@ def main():
              (MMU_ENABLE_VA, 2, {'target': MMU_ENABLE_VA + 4})]
     if args.no_reset:
         description = 'no reset probe'
-    elif args.paint_after:
-        symbols = kernel_symbols(args.kernel)
-        pe_state = None
-        for address, name in symbols.items():
-            if name == PE_STATE_SYMBOL:
-                pe_state = address
-                break
-        if pe_state is None:
-            raise SystemExit(f'{PE_STATE_SYMBOL} is not in the kernel symbol table; cannot paint')
-        call_va, callee = find_call(data, symbols, args.function, args.paint_after, args.occurrence)
-        sites.append((call_va, 4, {'callee': callee, 'target': call_va + 4}))
-        description = (f'stage 4 PAINT band {args.paint_band} after call #{args.occurrence} '
-                       f'to {args.paint_after} in {args.function} (at {call_va:#x}; '
-                       f'bootArgs from {PE_STATE_SYMBOL}+{PE_STATE_BOOT_ARGS_OFF:#x} = {pe_state:#x}); '
-                       f'the kernel keeps running')
     elif args.reset_after:
         symbols = kernel_symbols(args.kernel)
         call_va, callee = find_call(data, symbols, args.function, args.reset_after, args.occurrence)
@@ -484,22 +397,7 @@ def main():
 
     with tempfile.TemporaryDirectory() as tmp:
         for site, stage, symbols in sites:
-            if stage == 4 and args.paint_after:
-                band = args.paint_band
-                # Anchor on the bootArgs address itself: adding the field offset to
-                # the low 12 bits of PE_state could carry past 0xfff and silently
-                # truncate the `add` immediate.
-                boot_args = pe_state + PE_STATE_BOOT_ARGS_OFF
-                # Distinct colour per band so a photo shows which bands fired.
-                hue = ((band - 1) % 3)
-                lo, hi = (('0x00FF', '0xFFFF'), ('0xFF00', '0x00FF'), ('0xFFFF', '0x00FF'))[hue]
-                source = (".text\n.global _start\n_start:\n"
-                          + PAINT_PE.format(pe_page=f'{boot_args & ~0xFFF:#x}',
-                                            pe_off=f'{boot_args & 0xFFF:#x}',
-                                            args='x0', band=band, lo=lo, hi=hi)
-                          + "  bl callee\n  ret\n")
-            else:
-                source = RESET_BEFORE if (stage == 4 and args.reset_before) else SOURCES[stage].format(ticks=TIMEBASE * args.reset_delay)
+            source = RESET_BEFORE if (stage == 4 and args.reset_before) else SOURCES[stage].format(ticks=TIMEBASE * args.reset_delay)
             code = assemble(source, CAVES[stage], symbols, Path(tmp))
             if len(code) > CAVE_SIZE:
                 raise SystemExit(f'Stage {stage} code is too large')

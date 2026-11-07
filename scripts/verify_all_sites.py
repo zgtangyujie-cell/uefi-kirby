@@ -1,34 +1,31 @@
 #!/usr/bin/env python3
-"""List every call site in a probe image that was rewritten, and flag any round
-where more than one site was instrumented.
+"""List every call site in a probe image that was rewritten, resolving the
+function ranges from the image's OWN symbol table.
 
-An entry-probe round must redirect exactly ONE call site (stage 4).  If two or
-more sites are redirected, `--occurrence` or the cave reuse misbehaved, and any
-"reset / no reset" reading for that round is unreliable.
+An earlier version hardcoded the function addresses measured on the 51,945,472-byte
+prelinked kernel; after the UFS driver landed, the kernel became 19,099,024 bytes,
+every address moved, and the scan silently looked at the wrong code and reported
+"no probe installed" for an image that had one.
 
 Usage:
-    verify_all_sites.py <boot.img> [site-hex ...]
+    verify_all_sites.py <boot.img> [function-symbol ...]
 
-With no explicit sites, it scans the two functions used by the bisect
-(`_kernel_bootstrap` and `_kernel_bootstrap_thread`) for `bl` instructions that
-have become `b <cave>`.
+Default functions: _kernel_bootstrap, _kernel_bootstrap_thread, _bsd_init.
+Exit status:
+    0  exactly one call site rewritten (the round reading is valid)
+    1  none rewritten (no stage-4 probe in this image)
+    2  more than one rewritten (ambiguous; the reading is not trustworthy)
 """
-import io
+
+import bisect
 import struct
 import sys
 import zlib
 from pathlib import Path
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-
-TEXT_EXEC_VM = 0xFFFFFFF007238000
-TEXT_EXEC_FILEOFF = 0x234000
 CAVES = (0xFFFFFFF0073F0500, 0xFFFFFFF0073F0560,
          0xFFFFFFF0073F05C0, 0xFFFFFFF0073F0620)
-
-BOOTSTRAP = (0xFFFFFFF0072B8138, 0xFFFFFFF0072B8874)
-BS_THREAD = (0xFFFFFFF00798A570, 0xFFFFFFF00798A9BC)
-BSD_INIT = (0xFFFFFFF0076AFF14, 0xFFFFFFF0076B0904)
+DEFAULT_FUNCTIONS = ("_kernel_bootstrap", "_kernel_bootstrap_thread", "_bsd_init")
 
 
 class Volume:
@@ -68,6 +65,8 @@ def load_kernel(blob):
     stream = zlib.decompressobj(16 + zlib.MAX_WBITS).decompress(
         blob[4096:4096 + comp])
     mark = stream.find(b"TB321FUESP")
+    if mark < 0:
+        raise SystemExit("no payload volume in the boot image")
     vol = Volume(stream[mark - 43:])
     off = vol.root_offset
     e = None
@@ -78,6 +77,43 @@ def load_kernel(blob):
         off = vol.cluster_offset(e["cluster"])
     s = vol.cluster_offset(e["cluster"])
     return vol.data[s:s + e["size"]]
+
+
+def segments(data):
+    ncmds = struct.unpack_from("<I", data, 16)[0]
+    off = 32
+    segs = []
+    symtab = None
+    for _ in range(ncmds):
+        cmd, size = struct.unpack_from("<II", data, off)
+        if cmd == 0x19:
+            vm, vs, fo, fs = struct.unpack_from("<QQQQ", data, off + 24)
+            segs.append((vm, vs, fo, fs))
+        elif cmd == 0x2:
+            symtab = struct.unpack_from("<IIII", data, off + 8)
+        off += size
+    return segs, symtab
+
+
+def file_offset_of(segs, va):
+    for vm, vs, fo, fs in segs:
+        if vm <= va < vm + min(vs, fs):
+            return fo + (va - vm)
+    return None
+
+
+def read_symbols(data, symtab):
+    symoff, nsyms, stroff, strsize = symtab
+    table = {}
+    for i in range(nsyms):
+        strx, ntype, _, _, value = struct.unpack_from("<IBBHQ", data, symoff + i * 16)
+        if strx >= strsize or ntype not in (0x0F, 0x1E, 0x24):
+            continue
+        end = data.find(b"\0", stroff + strx)
+        if end < 0:
+            continue
+        table.setdefault(value, data[stroff + strx:end].decode("utf-8", "replace"))
+    return table
 
 
 def branch_target(va, word):
@@ -92,53 +128,58 @@ def main() -> int:
         raise SystemExit(__doc__)
     img = Path(sys.argv[1])
     kernel = load_kernel(img.read_bytes())
-    print("%s : kernel %d bytes" % (img.name, len(kernel)))
+    segs, symtab = segments(kernel)
+    if symtab is None:
+        raise SystemExit("no LC_SYMTAB in the kernel")
+    names = read_symbols(kernel, symtab)
+    starts = sorted(names)
+    wanted = sys.argv[2:] or list(DEFAULT_FUNCTIONS)
 
-    explicit = [int(a, 16) for a in sys.argv[2:]]
-    if explicit:
-        ranges = [(min(explicit), max(explicit) + 4, explicit)]
-    else:
-        ranges = [(BOOTSTRAP[0], BOOTSTRAP[1], None),
-                  (BS_THREAD[0], BS_THREAD[1], None),
-                  (BSD_INIT[0], BSD_INIT[1], None)]
+    print("%s : kernel %d bytes, %d symbols" % (img.name, len(kernel), len(names)))
+    print()
 
-    rewritten = []
-    bl_count = 0
-    for lo, hi, only in ranges:
-        va = lo
-        while va < hi:
-            if only is not None and va not in only:
-                va += 4
-                continue
-            f = TEXT_EXEC_FILEOFF + (va - TEXT_EXEC_VM)
-            if f < 0 or f + 4 > len(kernel):
-                va += 4
-                continue
+    found = []
+    scanned = 0
+    for fn in wanted:
+        base = None
+        for address, name in names.items():
+            if name == fn:
+                base = address
+                break
+        if base is None:
+            print("  %-32s not in the symbol table" % fn)
+            continue
+        i = bisect.bisect_right(starts, base)
+        end = starts[i] if i < len(starts) else base + 0x4000
+        sites = 0
+        va = base
+        while va < end:
+            f = file_offset_of(segs, va)
+            if f is None:
+                break
             w = struct.unpack_from("<I", kernel, f)[0]
-            op = w >> 26
-            if op == 0b100101:
-                bl_count += 1
-            elif op == 0b000101:
+            if (w >> 26) == 0b000101:
                 tgt = branch_target(va, w)
                 if tgt in CAVES:
-                    rewritten.append((va, tgt))
+                    found.append((fn, va, tgt))
+            sites += 1
             va += 4
+        scanned += sites
+        print("  %-32s %#10x .. %#10x  %5d words" % (fn, base, end, sites))
 
-    print("call sites scanned: %d  (bl found: %d)" % (
-        sum((hi - lo) // 4 for lo, hi, _ in ranges), bl_count))
     print()
-    if not rewritten:
-        print("no call site redirects into the probe caves")
+    print("scanned %d words in %d function(s)" % (scanned, len([w for w in wanted])))
+    print()
+    if not found:
+        print("no call site redirects into a probe cave")
         print("RESULT: this image has NO stage-4 probe installed")
         return 1
-
-    for va, tgt in rewritten:
-        print("  0x%X  ->  cave %#x   REWRITTEN" % (va, tgt))
+    for fn, va, tgt in found:
+        print("  %-32s %#x -> cave %#x   REWRITTEN" % (fn, va, tgt))
     print()
-    if len(rewritten) > 1:
-        print("WARNING: %d sites rewritten -- a round must instrument exactly one."
-              % len(rewritten))
-        print("         Any reset/no-reset reading from this image is unreliable.")
+    if len(found) > 1:
+        print("WARNING: %d sites rewritten -- a round instruments exactly one."
+              % len(found))
         return 2
     print("OK: exactly one call site instrumented, round reading is valid")
     return 0
