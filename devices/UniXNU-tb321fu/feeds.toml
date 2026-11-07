@@ -1,0 +1,8 @@
+# SM8650 的 SoC 共享仓库尚未存在。
+# 现状：UniXNU-sm8550-common 存在（200），UniXNU-sm8650-common 与 UniXNU-pineapple-common 均为 404。
+# 两条路：① 新建 UniXNU-sm8650-common；② 参照 caihong 的自包含做法。
+[[source]]
+name = "sm8650"
+kind = "soc"
+git = "https://github.com/UniXNU/UniXNU-sm8650-common"
+commit = "REQUIRED_SOC_COMMIT"

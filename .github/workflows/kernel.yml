@@ -1,0 +1,77 @@
+name: kernel
+
+# Feasibility check for the XNU build, mirroring UniXNU's own macos.yml:
+# same host tools, same defconfig, same `unixnu build kernel`.  It publishes
+# text logs only -- UniXNU's workflow is explicit that kernels, payloads and
+# IPSW members are never uploaded because they derive from Apple software, and
+# this one keeps that rule.
+#
+# What this answers: can the Linux/macOS kernel step run end to end for tb321fu
+# at all, and if not, which input is missing.  It does not produce a kernel we
+# can boot; that needs a host that may keep the artifact.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'devices/**'
+      - '.github/workflows/kernel.yml'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  kernel:
+    # Pinned image: macos-latest moves, and the kernel step needs an Xcode whose
+    # clang accepts the flags the XNU build passes.
+    runs-on: macos-26
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch UniXNU
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/UniXNU/UniXNU.git devices/UniXNU
+          git -C devices/UniXNU checkout 13e5973748a8447cbb90520c9a2dd5e65e272435
+          git -C devices/UniXNU log -1 --oneline
+
+      - name: Install host tools
+        run: |
+          set -euo pipefail
+          brew install llvm lld mtools dtc unifdef || brew install llvm lld mtools dtc
+          if ! command -v unifdef >/dev/null; then echo "$(brew --prefix unifdef)/bin" >> "$GITHUB_PATH"; fi
+
+      - name: Report the toolchain
+        run: |
+          sw_vers; uname -m; xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version || true
+          python3 --version; df -h "$GITHUB_WORKSPACE"
+
+      - name: Select the device
+        working-directory: devices/UniXNU
+        run: python3 unixnu defconfig tb321fu_defconfig -D ../UniXNU-tb321fu
+
+      - name: Fetch sources
+        working-directory: devices/UniXNU
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 unixnu fetch
+
+      - name: Build kernel
+        working-directory: devices/UniXNU
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 unixnu build kernel
+
+      - name: Upload the text logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-logs
+          path: |
+            devices/UniXNU/out/**/logs/*.log
+            devices/UniXNU/out/**/*.log
+          if-no-files-found: warn
+          retention-days: 7

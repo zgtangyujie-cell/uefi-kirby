@@ -1,0 +1,12 @@
+"schema_version" = 2
+
+["soc"]
+"name" = "sm8650"
+"description" = "Qualcomm SM8650 (pineapple / kirby)"
+# 溯源字段：UniXNU 构建流程不拉取它，仅记录 DTS 依据来源
+"source_repository" = "https://github.com/torvalds/linux"
+"source_revision" = "REQUIRED_UPSTREAM_COMMIT"
+
+["components"]
+# Adreno 750 目前没有独立组件（组件表里只有 Adreno740），GPU 阶段再补
+"include" = ["ArmCpu", "ArmDTPlatform"]

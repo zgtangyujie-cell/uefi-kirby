@@ -1,0 +1,189 @@
+schema_version = 2
+
+# Lenovo Legion Y700 Gen 3 (TB321FU) / SM8650 (kirby / pineapple)
+#
+# 格式 2 设备仓库。字段依据：
+#   - https://unixnu.com/zh/porting/device-repository#board-toml （格式 2 规范）
+#   - UniXNU-caihong/board.toml （同 SoC SM8650 的既有设备仓库，格式 1；
+#     只继承与 SoC / IPSW 相关的通用值，格式 1 专用的 tool / archives 不照抄）
+#   - 01-设备输入.md （本机只读实测：SM8650 / 16 GiB / 1600x2560 / A-B 分区）
+#   - uefi-kirby-main/Resources/Configs/kirby.toml （当前 bring-up 固件，
+#     已用 fastboot boot 实测可启动）
+# 标 REQUIRED_ / TODO 的字段必须从本机实测补齐，不要猜。
+
+[board]
+name = "tb321fu"
+soc = "SM8650"
+soc_source = "sm8650"          # TODO: UniXNU-sm8650-common 尚未存在；feeds.toml 里也是 REQUIRED_SOC_COMMIT
+os_profile = "ipados-17.7.11-21H461"
+description = "Lenovo Legion Y700 Gen 3 (TB321FU), SM8650, 1600x2560 165Hz, NT36523 panel, NVT touch"
+kit = "tb321fu"
+
+# 最小闭环：先只选输入已满足的实现（官方第 6 步）。
+# 显示 / 触控 / GPU 驱动等 bring-up 阶段 1 通过后再加。
+[components]
+include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot"]
+
+# 与 caihong / giulia 相同的 SM8650 目标：iPad7,1 / iPadOS 17.7.11 (21H461)。
+# 01-设备输入.md 附录：ADT 会伪造平台身份，IPSW 机型与平板无关，可沿用。
+[ipsw]
+url = "https://updates.cdn-apple.com/2025SpringFCS/fullrestores/122-77166/DCA6CFE8-90E9-4B92-880D-3DE171798E40/iPad_Pro_HFR_17.7.11_21H461_Restore.ipsw"
+product = "iPad7,1"
+version = "17.7.11"
+build = "21H461"
+device_class = "j120ap"
+chip_id = 0x8011
+board_id = 12
+fetch = ["KernelCache", "DeviceTree", "StaticTrustCache", "Cryptex1,SystemTrustCache",
+         "RestoreRamDisk", "RestoreTrustCache"]
+
+[ipsw.sha256]
+"044-76040-038.dmg" = "3f99b859c9728379110b66657c7b15285bcb1925ad8b5726542e2cdcf8b1028d"
+"044-76034-038.dmg" = "b4908cde41d23e6bc05e6af51a2c9eeb00cf0f863a6a18b1600c96a3fd70414f"
+
+# 本机 GPT 实测，两个独立来源交叉一致（都不抄 caihong）：
+#   - 02-阶段计划.md（11/5 只读 sgdisk）：first_lba = 3613096 / last_lba = 123365370
+#   - TB321FU_HyperOS3_0209/image/gpt_main0.bin（LUN0 GPT 条目）：first_lba = 3613096，
+#     模板里 last_lba = 3613095（长度 0），因为 userdata 由 patch*.xml 扩展到磁盘末尾。
+# 刷 HyperOS3 移植包时分区表被重建过（FHLoaderErase + rawprogram + patch），
+# last_lba 尚未在当前系统复核，用前必须只读重读一次：
+#   adb shell "sgdisk --print /dev/block/sda"
+[userdata]
+first_lba = 3613096
+last_lba  = 123365370      # TODO 待复核：刷机后未重读
+lba_bytes = 4096
+
+[kernel]
+defconfig = "tb321fu_defconfig"
+config_fragments = ["arch:configs/common.config", "soc:configs/sm8650.config", "os:configs/ipados.config"]
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "os:patches/xnu/series", "device:patches/xnu/series"]
+# TODO: [kernel] archives / [kernel.prelink] 需按格式 2 规范补齐。
+# caihong 是格式 1，其 archives 含 CaihongPmgrNub / build-sheng-ufs 等设备专用项，
+# 不能整段照抄。参考 https://unixnu.com/zh/porting/device-repository#内核
+
+[device_tree]
+source = "device:dts/tb321fu.dts"
+include_dirs = ["soc:dts"]
+
+[firmware]
+config = "tb321fu"
+dsc = "Platforms/Lenovo/tb321fuPkg/tb321fu.dsc"
+fd = "Build/tb321fuPkg/{target}_CLANGPDB/FV/SILICIUM_UEFI.fd"
+packages = ["{uefi}", "{tree}/package", "{tree}/drivers/DarwinBoot", "{edk2}"]
+# TODO: preflight / submodules / patches 待板级固件输入齐备后补。
+
+[firmware.defines]
+DEVICE_MODEL = "tb321fu"
+
+# 来自 uefi-kirby-main/Resources/Configs/kirby.toml，已用 fastboot boot 实测可启动。
+#
+# 设备现在跑的是 TB321FU_HyperOS3_0209（小米平板 7 Pro 的 HyperOS3 移植 ROM，
+# Android 16），不是 01-设备输入.md 采集时的 ZUI Android 14。因此下面三条基于
+# A14 的旧结论全部作废：
+#   - "flash.locked=1 / verifiedbootstate=green" -> 实测 0 / orange，已解锁
+#   - "ABL 没有 fastboot boot 命令"             -> 现在可用，今天多次进 UEFI
+#   - "FD 基址 0xA7100000 / 0x9FC00000 占位"     -> 下表 base 已三方一致
+#
+# base 的三方交叉证据（不要改）：
+#   - MemoryMapLib.c:82  {"UEFI_FD", 0xF3800000, 0x00400000, ...}  BootShim 拷 FD 到这里
+#   - kirby.toml:17      base = 0xF3800000
+#   - 实测               fastboot boot 进 UEFI、二维码可解
+# 厂商 uefi_a.img 是 ELF64，entry = paddr = 0xA7000000（2.9 MB），那是 ABL 原生加载
+# uefi_a 分区的地址，与我们 fastboot boot 路径无关；dsc 把 Info_Blk / Log_Buffer /
+# UEFI_Stack 放在 0xA7601000-0xA7ED9000，正是复用 ABL 保证可用的那段 UEFI 窗口。
+[bootimg.image]
+base = 0xF3800000
+pagesize = 4096
+header_version = 4
+
+[bootimg]
+# dtb = "build/tb321fu/tb321fu.dtb"   # 固件预检脚本生成后再填
+
+[payload]
+# GKI 布局实测（TB321FU_HyperOS3_0209/image/，直接解析 boot header）：
+#   boot_a.img         header v4, kernel_size = 35289600, ramdisk_size = 0
+#   init_boot_a.img    header v4, kernel_size = 0,        ramdisk_size = 2140043
+#   vendor_boot_a.img  header v4, vendor_ramdisk_size = 8642898, dtb_size = 5362106
+# 分区几何（gpt_main4.bin / rawprogram4.xml）：boot_a 与 vendor_boot_a 各 96 MiB，
+# init_boot_a 8 MiB，uefi_a 5 MiB，dtbo_a 24 MiB。
+# => payload 是 FAT 卷，只能进 vendor_boot 的 vendor_ramdisk；boot 里没有 ramdisk
+#    位置，官方 guide/boot 同样是 ./unixnu bootimg --ramdisk none。
+#    阶段 1（UEFI 亮屏）不需要 payload：fastboot boot 只吃 boot.img，BootShim 在
+#    kernel 段，今天已实测可进 UEFI。
+volume = "TB321FUESP"      # FAT 卷标 ≤ 11 字符
+size_mib = 256
+loader = "firmware"
+title = "Lenovo Legion Y700 (TB321FU)"
+dram_size = "0x80000000"   # 交接窗口，不是安装内存；沿用 caihong
+panic_screen = true
+# 关键：本机定时器中断不工作（实测 BDS 菜单 3 秒超时失效），且 fastboot boot
+# 下没有 ConIn。官方 Menu.c:152-155 在 RemainingMs==0 时直接 return DefaultIndex，
+# 不创建 EVT_TIMER 事件、不依赖输入设备 → timeout=0 可自动启动默认项。
+timeout = 0
+kernel_args = ["-v", "serial=3"]
+
+[package]
+unixnu = "../UniXNU"
+
+[package.defconfig]
+"ipados-17.7.11-21H461" = "tb321fu_defconfig"
+
+# 沿用 caihong（同 SoC / 同 IPSW）的 ADT 输入，按格式 2 字段写。
+# root_match_volume_uuid 必须等 userdata GPT 实测后由 build-userdata-gpt.py 生成，
+# 先用官方模板的 REQUIRED_ 占位，不要猜。
+[payload.adt]
+chip_id = "207"
+owned_memory_size = "0x80000000"
+root_match_volume_uuid = "REQUIRED_ROOT_VOLUME_UUID"
+cpu_regs = "0"
+psci_method = "smc"
+packed_data_ramdisk = false
+ipad_identity = true
+unique_chip_id = "required"
+
+# ---- MobileGestalt 身份覆盖：让 iPad7,1 的 17.7.11 userland 报成 8 寸 iPad mini 6 ----
+#
+# 依据 docs/zh/guide/mobilegestalt.md:3「修改身份不需要改动已签名的内核和用户态镜像」；
+# 格式 2 用带类型的 [adt.<node>.<type>] 表覆盖 OS profile 的同名属性
+# （docs/zh/porting/device-tree.md:83-94）。
+#
+# 每个值的来源，没有一个是猜的：
+#   model             iPad14,1   api.ipsw.me/v4/device/iPad14,1（蜂窝版 iPad14,2）
+#   target-type       J310       iPad14,1 的 boardconfig = J310AP，对照 iPad7,1 是 j120ap / J120
+#   compatible        J310AP     同上
+#   artwork-subtype   2266       双重硬证据：mini 6 的 17.7 IPSW 里启动图叫
+#                                applelogo@2266~ipad / batterycharging@2266~ipad；
+#                                同一规律在 iPad7,1 上是 applelogo@2224（Pro 10.5）与
+#                                applelogo@2732（Pro 12.9），而 profile 的
+#                                artwork-device-subtype 正是 2732 → 该值 = 屏幕长边像素
+#   scale-factor      2          mini 6 与 iPad7,1 同为 @2x
+#   thin-bezel / home-button-type = 1 / 2    mini 6 无 Home 键，走全面屏手势
+#
+# 明确「不覆盖、继承 profile」的两项，不是漏了：
+#   product-id（J120 = e9fefef6e6f9d12a5ba1a2551866cbbd749f0ec3）
+#     这是 20 字节值，MGGetProductType() 拿它查 libMobileGestalt 的产品表。要换掉必须先
+#     从 DeviceTree.j310ap.im4p 的 bvx2/LZSS 里解出来；不覆盖时客户端仍认它是 J120，
+#     但**不会**变成 unknown device（profile.toml:87-88 说的是"没有该属性"才 unknown）。
+#   compatible-device-fallback（profile 里是 iPad6,7）
+#     只在主设备资源缺失时兜底，先不动。
+#
+# 验证顺序按 mobilegestalt.md:69：设备名称 → 锁屏提示 → 上滑手势 → 键盘布局。
+# 都正确再决定要不要为 product-id 单独解那个 LZSS。
+[adt.root.string]
+model = "iPad14,1"
+target-type = "J310"
+compatible = "J310AP"
+
+[adt.product.string]
+product-name = "iPad mini (6th generation)"
+product-description = "iPad mini (6th generation)"
+artwork-device-idiom = "pad"
+artwork-display-gamut = "P3"
+
+[adt.product.u32]
+artwork-device-subtype = 2266
+artwork-scale-factor = 2
+thin-bezel = 1
+
+[adt.buttons.u32]
+home-button-type = 2
