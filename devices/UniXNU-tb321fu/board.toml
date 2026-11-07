@@ -41,16 +41,18 @@ fetch = ["KernelCache", "DeviceTree", "StaticTrustCache", "Cryptex1,SystemTrustC
 "044-76040-038.dmg" = "3f99b859c9728379110b66657c7b15285bcb1925ad8b5726542e2cdcf8b1028d"
 "044-76034-038.dmg" = "b4908cde41d23e6bc05e6af51a2c9eeb00cf0f863a6a18b1600c96a3fd70414f"
 
-# 本机 GPT 实测，两个独立来源交叉一致（都不抄 caihong）：
+# 本机 GPT 实测，三个独立来源交叉一致（都不抄 caihong）：
 #   - 02-阶段计划.md（11/5 只读 sgdisk）：first_lba = 3613096 / last_lba = 123365370
 #   - TB321FU_HyperOS3_0209/image/gpt_main0.bin（LUN0 GPT 条目）：first_lba = 3613096，
 #     模板里 last_lba = 3613095（长度 0），因为 userdata 由 patch*.xml 扩展到磁盘末尾。
-# 刷 HyperOS3 移植包时分区表被重建过（FHLoaderErase + rawprogram + patch），
-# last_lba 尚未在当前系统复核，用前必须只读重读一次：
-#   adb shell "sgdisk --print /dev/block/sda"
+#   - 2026-11-08 00:30 复核实测（root，只读），刷机后仍然一致 —— TODO 关闭：
+#       Disk /dev/block/sda: 123365376 sectors, 470.6 GiB
+#       Sector size (logical/physical): 4096/4096
+#        16  3613096  123365370  456.8 GiB  A03A  userdata
+#     注意整盘只有一个 LUN（sda），16 个分区全在 LUN 0，没有第二个 LUN 要枚举。
 [userdata]
 first_lba = 3613096
-last_lba  = 123365370      # TODO 待复核：刷机后未重读
+last_lba  = 123365370      # 实测复核通过 2026-11-08
 lba_bytes = 4096
 
 [kernel]
