@@ -184,8 +184,28 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
     #
     ENTRY_PROBE="$WORK/unixnu/scripts/patch-xnu-entry-probe.py"
     if [ -f "$ENTRY_PROBE" ]; then
-      UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" --panic-screen --no-reset ||
+      #
+      # The probe shells out to llvm-nm / clang / ld.lld / llvm-objcopy /
+      # llvm-size / llvm-readelf and falls back to the macOS Homebrew prefix
+      # when they are not on PATH.  On this Ubuntu runner they live under
+      # /usr/lib/llvm-*/bin, so put that on PATH first or the script dies with
+      # FileNotFoundError and leaves _start untouched.
+      #
+      for _llvmbin in /usr/lib/llvm-*/bin; do
+        if [ -d "$_llvmbin" ]; then PATH="$_llvmbin:$PATH"; fi
+      done
+      export PATH
+      UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" --no-reset ||
         { log "entry probe install failed"; exit 1; }
+      log "entry probe installed; verifying _start moved"
+      python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
+import struct, sys
+d = open(sys.argv[1], 'rb').read()
+word = struct.unpack_from('<I', d, 0x3EC488)[0]
+if word == 0x140006F5:
+    sys.exit("_start is still the original branch")
+print(f"_start now {word:#010x}")
+PY
     else
       log "entry probe script not present; kernel ships without colour bars"
     fi
