@@ -123,36 +123,9 @@ jobs:
             echo "::warning title=no kernel::out/ has no kernel.macho"
           fi
 
-      - name: Generate the ADT sidecar
-        if: success()
-        working-directory: devices/UniXNU
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/adt
-          #
-          # `unixnu build kernel` does not emit kernel.macho.adt; the payload
-          # step does (payload.py:191-196).  We only need the ADT itself, so
-          # call the same official generator with the same Context the CLI
-          # would build, rather than running the whole payload step (which
-          # wants mformat, a Data seed and IPSW members).
-          #
-          python3.12 - <<'PY'
-          import sys
-          from pathlib import Path
-
-          sys.path.insert(0, str(Path('scripts').resolve()))
-          from unixnu import cli, config, devicetree
-
-          args = cli.parser().parse_args(['payload', '-D', '../UniXNU-tb321fu'])
-          args.command = 'build'          # cli.main normalises every STEP to 'build'
-          ctx = config.Context(args)
-          dtb = devicetree.compile_hardware(ctx)
-          adt = devicetree.generate(dtb, ctx.board)
-          Path('/tmp/adt/kernel.macho.adt').write_bytes(adt)
-          print(f'ADT: {len(adt)} bytes from {dtb}')
-          PY
-          ls -l /tmp/adt
+      # The ADT is built by .github/workflows/adt.yml on adt-out: it needs only
+      # dtc and the board DTS, and running it here made a failed sidecar look
+      # like a failed kernel build.
 
       - name: Publish the kernel to the kernel-out branch
         if: success()
@@ -164,11 +137,6 @@ jobs:
           mkdir -p /tmp/out
           cp "$src"/kernel.macho /tmp/out/
           [ -f "$src/kernel.macho.adt" ] && cp "$src/kernel.macho.adt" /tmp/out/ || true
-          if [ -f /tmp/adt/kernel.macho.adt ]; then
-            cp /tmp/adt/kernel.macho.adt /tmp/out/
-          else
-            echo "::warning title=no ADT::DarwinBoot will report Not Found for kernel.macho.adt"
-          fi
           cd /tmp/out
           git init -q
           git -c user.email=ci@example.com -c user.name=ci checkout -q -b kernel-out

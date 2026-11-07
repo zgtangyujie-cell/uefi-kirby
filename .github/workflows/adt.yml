@@ -1,0 +1,84 @@
+name: adt
+
+# Build the DarwinBoot ADT sidecar on its own, so iterating on dts/tb321fu.dts
+# costs two minutes instead of a full kernel rebuild.
+#
+# The kernel job took 8-13 minutes and its ADT step failed silently; splitting
+# the two also keeps kernel-out (kernel.macho) and adt-out (kernel.macho.adt)
+# from overwriting each other with force pushes.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'devices/UniXNU-tb321fu/dts/**'
+      - 'devices/UniXNU-sm8650-common/dts/**'
+      - 'devices/UniXNU-tb321fu/board.toml'
+      - 'scripts/gen-adt.py'
+      - '.github/workflows/adt.yml'
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  adt:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch UniXNU
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/UniXNU/UniXNU.git /tmp/UniXNU
+          git -C /tmp/UniXNU checkout 13e5973748a8447cbb90520c9a2dd5e65e272435
+          git -C /tmp/UniXNU log -1 --oneline
+
+      - name: Install host tools
+        run: |
+          set -euo pipefail
+          brew install dtc python@3.12
+          echo "$(brew --prefix python@3.12)/bin" >> "$GITHUB_PATH"
+          dtc --version
+          python3.12 --version
+
+      - name: Generate kernel.macho.adt
+        run: |
+          set +e
+          mkdir -p /tmp/adt
+          python3.12 scripts/gen-adt.py \
+            --unixnu /tmp/UniXNU \
+            --output /tmp/adt/kernel.macho.adt 2>&1 | tee /tmp/adt.log
+          rc=${PIPESTATUS[0]}
+          echo "gen-adt rc=$rc"
+          ls -l /tmp/adt
+          exit $rc
+
+      - name: Publish the log when it fails
+        if: failure()
+        run: |
+          set +e
+          mkdir -p /tmp/pub
+          cp /tmp/adt.log /tmp/pub/adt.log 2>/dev/null
+          cd /tmp/pub
+          git init -q
+          git -c user.email=ci@example.com -c user.name=ci checkout -q -b kernel-log
+          git add -A
+          git -c user.email=ci@example.com -c user.name=ci commit -qm "adt failed"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" kernel-log
+
+      - name: Publish the ADT
+        if: success()
+        run: |
+          set -euo pipefail
+          cd /tmp/adt
+          git init -q
+          git -c user.email=ci@example.com -c user.name=ci checkout -q -b adt-out
+          git add kernel.macho.adt
+          git -c user.email=ci@example.com -c user.name=ci commit -qm "kernel.macho.adt $(date -u +%FT%TZ)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" adt-out
+          ls -l

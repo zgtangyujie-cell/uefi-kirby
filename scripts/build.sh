@@ -161,19 +161,22 @@ rm -f "$KERNEL_TMP" "$ADT_TMP"
 if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
   git -C "$ROOT" show FETCH_HEAD:kernel.macho > "$KERNEL_TMP" 2>/dev/null
   log "kernel from kernel-out: $(wc -c < "$KERNEL_TMP") bytes"
-  #
-  # DarwinBoot.c:648-650 unconditionally opens <KernelPath>.adt and returns
-  # EFI_NOT_FOUND when it is missing -- unlike .trustcache/.gpuaddon/.vroot,
-  # which all tolerate NOT_FOUND.  So this sidecar is mandatory, not optional.
-  #
-  if git -C "$ROOT" show FETCH_HEAD:kernel.macho.adt > "$ADT_TMP" 2>/dev/null; then
-    log "ADT from kernel-out: $(wc -c < "$ADT_TMP") bytes"
-  else
-    rm -f "$ADT_TMP"
-    log "kernel-out has no kernel.macho.adt; DarwinBoot will report Not Found"
-  fi
 else
   log "no kernel-out branch; the payload will carry the config only"
+fi
+#
+# DarwinBoot.c:648-650 unconditionally opens <KernelPath>.adt and returns
+# EFI_NOT_FOUND when it is missing -- unlike .trustcache/.gpuaddon/.vroot,
+# which all tolerate NOT_FOUND.  So this sidecar is mandatory, not optional.
+# The adt job builds it on adt-out from the board DTS alone (scripts/gen-adt.py),
+# which keeps kernel-out from having to carry it through every kernel rebuild.
+#
+if git -C "$ROOT" fetch -q --depth 1 origin adt-out 2>/dev/null &&
+   git -C "$ROOT" show FETCH_HEAD:kernel.macho.adt > "$ADT_TMP" 2>/dev/null; then
+  log "ADT from adt-out: $(wc -c < "$ADT_TMP") bytes"
+else
+  rm -f "$ADT_TMP"
+  log "no adt-out:kernel.macho.adt; DarwinBoot will report Not Found"
 fi
 PAYLOAD_ARGS=(--output Platforms/Lenovo/kirbyPkg/Resources/payload.bin
               --size-mib 64 --cluster-sectors 8 --label TB321FUESP

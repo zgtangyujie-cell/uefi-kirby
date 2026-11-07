@@ -1,16 +1,41 @@
 /dts-v1/;
-/include/ "sm8550.dtsi"
+/include/ "sm8650.dtsi"
 
+/*
+ * Lenovo Legion Y700 (TB321FU) — SM8650 / pineapple / kirby.
+ *
+ * sm8650.dtsi (devices/UniXNU-sm8650-common/dts) already carries the eight
+ * CPUs with timebase-frequency, PSCI and the GIC.  This file adds only what is
+ * board specific, so devicetree.generate() can build the ADT sidecar.
+ *
+ * DRAM: base 0x80000000, size 0x80000000 (2 GiB handoff window).
+ *   - board.toml [payload] dram_size = "0x80000000"; generate() rejects a DTS
+ *     that disagrees with it.
+ *   - MemoryMapLib.c:55 puts the gunyah_hyp reserve at 0x80000000, i.e. the
+ *     real start of DRAM rather than an arbitrary number.
+ *   - The value is inherited from caihong (same SoC, same IPSW), not guessed.
+ */
 / {
-    model = "REQUIRED_BOARD_MODEL";
-    compatible = "vendor,REQUIRED_BOARD", "qcom,sm8550";
+    model = "Lenovo Legion Y700 (TB321FU)";
+    compatible = "lenovo,kirby", "qcom,sm8650";
 
-    // Replace address and size from the board memory map.
-    memory@0 {
+    memory@80000000 {
         device_type = "memory";
-        reg = <0 0 0 0>;
+        reg = <0 0x80000000 0 0x80000000>;
     };
 };
 
-// Set CPU status, reserved memory, peripheral wiring, and firmware inputs
-// from this board's hardware documentation.
+/*
+ * XNU reads cluster-type as an integer character.  A520 pair is efficiency;
+ * the A720 triples and the X4 are performance.  Frequencies and capacities
+ * behind that split are recorded at the top of sm8650.dtsi.
+ */
+&cpu0 { unixnu,cluster-type = "E"; };
+&cpu1 { unixnu,cluster-type = "E"; };
+
+&cpu2 { unixnu,cluster-type = "P"; };
+&cpu3 { unixnu,cluster-type = "P"; };
+&cpu4 { unixnu,cluster-type = "P"; };
+&cpu5 { unixnu,cluster-type = "P"; };
+&cpu6 { unixnu,cluster-type = "P"; };
+&cpu7 { unixnu,cluster-type = "P"; };
