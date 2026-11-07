@@ -4,5 +4,8 @@
 [[source]]
 name = "sm8650"
 kind = "soc"
-git = "https://github.com/UniXNU/UniXNU-sm8650-common"
-commit = "REQUIRED_SOC_COMMIT"
+# Upstream UniXNU/UniXNU-sm8650-common does not exist (404), so this tree carries
+# its own copy under devices/ and points at it with a relative path.  resolve_soc
+# honours "local" before "git", and local.toml cannot be used here because the
+# device repository ignores it.
+local = "../UniXNU-sm8650-common"
