@@ -311,16 +311,18 @@ ScanMemory (
       EFI_MEMORY_DESCRIPTOR  *Entry = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + At);
 
       //
-      // Every region type is fair game except the ones that are not memory.
-      // The first version copied caihong's "conventional memory only" filter
-      // and found a single candidate region: the bootloader marks the pages it
-      // loaded the ramdisk into as EfiReservedMemoryType, so that filter
-      // skipped exactly the place the payload had to be.  MMIO and PAL code
-      // stay off limits -- dereferencing those is a data abort, not a read.
+      // Back to the safe set.  Accepting every non-MMIO type was tried and it
+      // took the tablet down: one of the reserved ranges the memory map
+      // describes is not actually backed, and reading it produced a data abort
+      // before this driver could even publish a device.  The map is now only
+      // *reported* (ReportRegions) and never dereferenced outside these types.
       //
-      if ((Entry->Type == EfiMemoryMappedIO) ||
-          (Entry->Type == EfiMemoryMappedIOPortSpace) ||
-          (Entry->Type == EfiPalCode))
+      if ((Entry->Type != EfiConventionalMemory) &&
+          (Entry->Type != EfiBootServicesData) &&
+          (Entry->Type != EfiBootServicesCode) &&
+          (Entry->Type != EfiLoaderData) &&
+          (Entry->Type != EfiLoaderCode) &&
+          (Entry->Type != EfiACPIReclaimMemory))
       {
         continue;
       }
@@ -352,6 +354,65 @@ ScanMemory (
     (UINT32)(Scanned / (1024 * 1024))
     ));
   return EFI_NOT_FOUND;
+}
+
+/**
+  Print the regions that could hold an 8 MiB payload, without touching them.
+
+  Reading the memory map is always safe; dereferencing what it describes is
+  not, which is exactly how the previous build died.  If the bootloader
+  reserved the ramdisk's pages, the entry shows up here as type 0 with a start
+  address, and the next build can go straight to it instead of searching.
+
+  Two passes so reserved ranges win the three available lines over the
+  conventional ones.
+**/
+STATIC
+VOID
+ReportRegions (
+  IN EFI_MEMORY_DESCRIPTOR  *Map,
+  IN UINTN                  Size,
+  IN UINTN                  DescriptorSize
+  )
+{
+  UINTN  At;
+  UINTN  Shown;
+  UINTN  Pass;
+
+  Shown = 0;
+  for (Pass = 0; (Pass < 2) && (Shown < 3); Pass++) {
+    for (At = 0; (At + DescriptorSize <= Size) && (Shown < 3); At += DescriptorSize) {
+      EFI_MEMORY_DESCRIPTOR  *Entry = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + At);
+      UINT64                 Bytes = EFI_PAGES_TO_SIZE (Entry->NumberOfPages);
+
+      if ((Bytes < SCAN_MIN_REGION) || (Bytes > 64ULL * 1024 * 1024)) {
+        continue;
+      }
+
+      if (Pass == 0) {
+        if (Entry->Type != EfiReservedMemoryType) {
+          continue;
+        }
+      } else if ((Entry->Type != EfiConventionalMemory) &&
+                 (Entry->Type != EfiBootServicesData) &&
+                 (Entry->Type != EfiBootServicesCode) &&
+                 (Entry->Type != EfiLoaderData) &&
+                 (Entry->Type != EfiLoaderCode) &&
+                 (Entry->Type != EfiACPIReclaimMemory))
+      {
+        continue;
+      }
+
+      DEBUG ((
+        DEBUG_ERROR,
+        "KIRBYINITRD: mm t=%u 0x%lx n=0x%lx\n",
+        (UINT32)Entry->Type,
+        Entry->PhysicalStart,
+        Bytes
+        ));
+      Shown++;
+    }
+  }
 }
 
 STATIC
@@ -389,6 +450,7 @@ ScanMemoryMap (
     return Status;
   }
 
+  ReportRegions (Map, Size, DescriptorSize);
   Status = ScanMemory (Map, Size, DescriptorSize);
   FreePool (Map);
   return Status;

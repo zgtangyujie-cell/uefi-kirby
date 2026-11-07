@@ -203,43 +203,13 @@ if [ -f "$UNIXNU_DXE_C" ]; then
 fi
 
 #
-# Diagnostic only: SetVariable("Boot0000") returns EFI_INVALID_PARAMETER and the
-# two candidate causes are indistinguishable from the outside -- OptionSize == 0
-# (DataSize 0 with non-zero attributes is an invalid delete) versus this
-# memory-only variable store rejecting EFI_VARIABLE_NON_VOLATILE.  Print both.
+# The SetVariable probe that used to sit here is gone.  It answered its
+# question -- attr=0x7 size=96 is perfectly valid and SetVariable still
+# returns EFI_INVALID_PARAMETER, so this platform's variable store simply
+# cannot be written -- and every build since then spent four lines of the
+# 600-byte QR slice repeating settled news.  The payload chain needs that
+# room for its own diagnostics.
 #
-python3 - "$UNIXNU_DXE_C" <<'DXEEOF'
-import sys, pathlib
-p = pathlib.Path(sys.argv[1])
-if not p.is_file():
-    print("skip: %s not present" % p)
-    raise SystemExit(0)
-text = p.read_text(encoding="utf-8")
-needle = "    Status = gRT->SetVariable (Name, &gEfiGlobalVariableGuid, OPTION_ATTRIBUTES, OptionSize, Option);"
-probe = (
-    '    DEBUG ((DEBUG_ERROR, "UniXNUDxe: write %s attr=0x%x size=%u\\n", '
-    'Name, (UINT32)OPTION_ATTRIBUTES, (UINT32)OptionSize));\n'
-    '    {\n'
-    '      UINT32      KirbyProbeValue = 0x4B495242;\n'
-    '      EFI_STATUS  KirbyProbeStatus;\n'
-    '      KirbyProbeStatus = gRT->SetVariable (L"KirbyProbeNv", &gEfiGlobalVariableGuid,\n'
-    '                                           EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_NON_VOLATILE,\n'
-    '                                           sizeof (KirbyProbeValue), &KirbyProbeValue);\n'
-    '      DEBUG ((DEBUG_ERROR, "UniXNUDxe: probe nv=%r\\n", KirbyProbeStatus));\n'
-    '      KirbyProbeStatus = gRT->SetVariable (L"KirbyProbeBs", &gEfiGlobalVariableGuid,\n'
-    '                                           EFI_VARIABLE_BOOTSERVICE_ACCESS,\n'
-    '                                           sizeof (KirbyProbeValue), &KirbyProbeValue);\n'
-    '      DEBUG ((DEBUG_ERROR, "UniXNUDxe: probe bs=%r\\n", KirbyProbeStatus));\n'
-    '    }\n'
-)
-if needle not in text:
-    print("SetVariable needle not found")
-elif probe in text:
-    print("already probed")
-else:
-    p.write_text(text.replace(needle, probe + needle, 1), encoding="utf-8")
-    print("added SetVariable probe")
-DXEEOF
 
 #
 # Diagnostic only.  The probe proved the arguments are valid -- attr=0x7
