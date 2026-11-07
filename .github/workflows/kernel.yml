@@ -61,7 +61,12 @@ jobs:
             # zzz-boot-progress.patch adds boot_progress_* instrumentation and is applied last;
             # the patches before it already rewrote bsd_init.c, so its hunks no longer match.
             # It is diagnostic, not a boot requirement, so set it aside to see what is behind it.
-            mv patches/xnu/zzz-boot-progress.patch /tmp/zzz-boot-progress.patch.disabled || true
+            # The os series lists the shared zzz-boot-progress patch, but the arch series
+            # (56 patches) already rewrote bsd_init.c by the time it runs, so its hunks no
+            # longer match.  Drop the line instead of the file: removing the file trips the
+            # 'patch missing' check in patches.plan().
+            sed -i.bak '/zzz-boot-progress/d' profiles/os/ipados-17.7.11-21H461/patches/xnu/series
+            cat profiles/os/ipados-17.7.11-21H461/patches/xnu/series
             echo "== defconfig"
             python3.12 unixnu defconfig tb321fu_defconfig -D ../UniXNU-tb321fu
             echo "== fetch"
