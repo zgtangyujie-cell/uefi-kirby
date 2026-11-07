@@ -170,7 +170,11 @@ APRIORI DXE {
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/ChargerExDxe/ChargerExDxe.inf
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf
+  #
+  # Device-mode USB, tried as a way to read the log without a photograph:/n  # UDC -> device stack -> config -> mass storage, in that order.  All four
+  # declare Depex TRUE, so nothing else will sequence them for us.
+  #
+  INF Binaries/kirby/QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf
   # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
   # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
   # INF Binaries/kirby/QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.inf
@@ -183,13 +187,13 @@ APRIORI DXE {
   # INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
 
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
-  # INF Binaries/kirby/QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
   # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
   # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
-  # INF Binaries/kirby/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf
+  INF Binaries/kirby/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf
   # USB 栈：xHCI 直接操作控制器，depex=TRUE，不经 SMEM/Clock。
   # fastboot 本身走 USB，说明 ABL 已把控制器带起来，值得一试。
-  # INF Binaries/kirby/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
+  INF Binaries/kirby/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
+  INF Binaries/kirby/QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
   # 【单变量实验结论 2026-11-06 16:15，b8b90bc 实测】ButtonsDxe 依赖 TZ/QSEE
   # （PMIC SDAM / PON），fastboot boot 下 SCM 不可用 → 自身 ASSERT_EFI_ERROR
   # (ASSERT AutoGen.c +469, ERROR C9000002:V03000007)。同 SCM 三件套，退回。
