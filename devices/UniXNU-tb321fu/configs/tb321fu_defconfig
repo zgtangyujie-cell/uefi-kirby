@@ -7,6 +7,5 @@ CONFIG_XNU_ARMCPU=y
 CONFIG_XNU_CRYPTO_BOOTSTRAP="prelinked"
 # CONFIG_XNU_NATIVE_UFS is not set
 # CONFIG_XNU_NATIVE_ADRENO is not set
-# UFS: ShengUfs 是官方 iPadOS 17.7.11 的存储实现（components.toml 里它的
-# os_abi 就是这一版），打开它才会把 NativeUfs 链进内核并匹配 ADT 的 ufs 节点。
-CONFIG_XNU_NATIVE_UFS=y
+# CONFIG_XNU_NATIVE_UFS is not set —— 存储走 patches/xnu/kirby-ufs.patch 的
+# BSD bdevsw 驱动，不是 ShengUfs 组件，所以这个开关保持关闭。

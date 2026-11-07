@@ -47,17 +47,19 @@
  * 而 devicetree.generate() 只把 enabled 且带 unixnu,adt-name 的节点写进 ADT
  * （scripts/unixnu/devicetree.py:370），所以这里必须打开。
  *
- * compatible 同时声明 sm8550：ShengUfs 的匹配是
- *   NativeUfs.cpp:139  contains(text, ..., "qcom,sm8550-ufshc")
- * 一个字符串包含判断。SM8650 的 UFS 控制器和 SM8550 同基址同长度：
- *   ufshc@1d84000  reg = <0 0x1d84000 0 0x3000>
- *   phy@1d80000    reg = <0 0x1d80000 0 0x2000>
- * ShengUfs 的 GccUfs.h 写的也是 UFS_HC_BASE 0x01d84000 / GCC_BASE 0x00100000。
- * 保留 sm8650 在前，如实说明这块硬件是 SM8650 的，只是寄存器模型与 SM8550 相同。
+ * 节点名改成 kirby-ufs：patches/xnu/kirby-ufs.patch 的驱动用
+ *   SecureDTLookupEntry(NULL, "/kirby-ufs", &node)
+ * 按名字取顶层 ADT 节点，再从它的 reg 读控制器窗口，并校验
+ * reg[0] == UFS_MMIO_BASE(0x01d84000) 且 reg[1] >= UFS_MMIO_SIZE(0x3000)。
+ * dtsi 里默认的 adt-name 是 "ufshc"，不改名驱动就找不到节点。
+ *
+ * compatible 同时声明 sm8550：SM8650 的 UFS 控制器和 SM8550 同基址同长度，
+ * 保留 sm8650 在前，如实说明这块硬件是 SM8650 的。
  */
 &ufs {
     status = "okay";
     compatible = "qcom,sm8650-ufshc", "qcom,sm8550-ufshc";
+    unixnu,adt-name = "kirby-ufs";
 };
 
 &ufsphy {

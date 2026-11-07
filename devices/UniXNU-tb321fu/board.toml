@@ -22,13 +22,15 @@ kit = "tb321fu"
 # 最小闭环：先只选输入已满足的实现（官方第 6 步）。
 # 显示 / 触控 / GPU 驱动等 bring-up 阶段 1 通过后再加。
 #
-# ShengUfs（2026-11-08 加）：官方 iPadOS 17.7.11 的存储正路，见
-# https://unixnu.com/zh/porting/ufs 与 UniXNU-sheng 的
-# [os_overrides."ipados-17.7.11-21H461"]。components.toml 里它声明
-# dependencies = ["VirtioMmioBlock", "VerifiedRoot"]，archive_plan 会递归带进来，
-# 不用在这里重复写。
+# 存储走设备级内核补丁 patches/xnu/kirby-ufs.patch（BSD bdevsw，
+# 端口自 UniXNU-kebab），**不选 ShengUfs 组件**：ShengUfs 的
+# NativeUfsBlock 继承 IOBlockStorageDevice，那是 IOStorageFamily 的类，
+# 而 IOStorageFamily 只在 prelink 的 kernelcache kexts 里。这台机器用
+# --skip-prelink 构建（256 MiB 窗口放不下 65 MiB prelinked 跨度），
+# 链接时 libShengUfs.a 会报 vtable for IOBlockStorageDevice 未定义。
+# BSD bdevsw 只用 buf/conf/devfs，内核自带，不依赖任何 kext。
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot", "ShengUfs"]
+include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot"]
 
 # 与 caihong / giulia 相同的 SM8650 目标：iPad7,1 / iPadOS 17.7.11 (21H461)。
 # 01-设备输入.md 附录：ADT 会伪造平台身份，IPSW 机型与平板无关，可沿用。
@@ -61,9 +63,9 @@ first_lba = 3613096
 last_lba  = 123365370      # 实测复核通过 2026-11-08
 lba_bytes = 4096
 
-# archives 是**替换**语义：profile/arch/arm64 给了起手 8 项，这里必须写全再追加。
-# component:ShengUfs 会按 components.toml 的 dependencies 递归带出
-# VirtioMmioBlock 与 VerifiedRoot，所以只列 ShengUfs 一个就够。
+# archives 是**替换**语义：profile/arch/arm64 给了起手 8 项，这里必须写全。
+# 存储驱动不在这里，它是 patches/xnu/kirby-ufs.patch 里的 BSD 文件，
+# 由 bsd/conf/files 那一行带进构建。
 [kernel]
 defconfig = "tb321fu_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8650.config", "os:configs/ipados.config"]
@@ -77,7 +79,6 @@ archives = [
   "build-software-aes-bindings.py",
   "build-mockfs-fixture.py",
   "build-libpthread-kernel.py",
-  "component:ShengUfs",
 ]
 
 [device_tree]
@@ -139,7 +140,7 @@ panic_screen = true
 # 下没有 ConIn。官方 Menu.c:152-155 在 RemainingMs==0 时直接 return DefaultIndex，
 # 不创建 EVT_TIMER 事件、不依赖输入设备 → timeout=0 可自动启动默认项。
 timeout = 0
-kernel_args = ["-v", "serial=3", "native-ufs-root=1"]
+kernel_args = ["-v", "serial=3", "rd=ufsroot0", "ufsroot=userdata"]
 
 [package]
 unixnu = "../UniXNU"

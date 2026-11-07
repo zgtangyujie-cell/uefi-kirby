@@ -1,0 +1,908 @@
+diff --git a/bsd/conf/files b/bsd/conf/files
+index 19b4065..4f8203d 100644
+--- a/bsd/conf/files
++++ b/bsd/conf/files
+@@ -106,6 +106,7 @@ bsd/dev/dtrace/fasttrap.c		optional config_dtrace
+ bsd/dev/random/randomdev.c		standard
+ 
+ bsd/dev/memdev.c			standard
++bsd/dev/kebab_ufs.c			standard
+ bsd/dev/mem.c				standard
+ bsd/dev/munge.c 			optional config_requires_u32_munging
+ bsd/dev/unix_startup.c			standard
+diff --git a/bsd/dev/kebab_ufs.c b/bsd/dev/kebab_ufs.c
+new file mode 100644
+index 0000000..1d66736
+--- /dev/null
++++ b/bsd/dev/kebab_ufs.c
+@@ -0,0 +1,852 @@
++/*
++ * KEBAB internal UFS root device (read-only).
++ *
++ * The Qualcomm UFS host (UFSHCI 2.x/3.x legacy transfer list) must be left
++ * enabled, idle, with the link up and physical DMA addressing working by the
++ * bootloader, which loaded our boot image from it. This driver reuses that
++ * state: it points the transfer request list at its own memory (verifying the
++ * host took it before ringing any doorbell) and issues polled SCSI commands,
++ * one at a time, to LUN 0. It finds one GPT partition by name (boot-arg
++ * ufsroot=, default "userdata") and exposes it as the BSD disk ufsroot0
++ * (rufsroot0), with 512-byte logical sectors over the device's 4 KiB blocks.
++ * Root on it with rd=ufsroot0.
++ *
++ * Read-only unless boot-arg ufsrw=1: every write is bounds-checked against
++ * the partition immediately before it is issued.
++ *
++ * All DMA goes through one physically contiguous allocation (descriptors and
++ * a 1 MiB bounce buffer); the host is not cache coherent, so caches are
++ * cleaned/invalidated around each command. Writes are refused. Firmware must
++ * retain its UFS clocks, PHY, power and identity/bypass IOMMU configuration
++ * for this allocation, not just its own DMA pool. No firmware calls are made.
++ */
++#if defined(__arm64__)
++#include <sys/param.h>
++#include <sys/systm.h>
++
++#include <sys/buf.h>
++#include <sys/conf.h>
++#include <sys/disk.h>
++#include <sys/errno.h>
++#include <sys/fcntl.h>
++#include <sys/proc.h>
++#include <sys/uio.h>
++#include <miscfs/devfs/devfs.h>
++#include <kern/locks.h>
++#include <kern/clock.h>
++#include <machine/machine_routines.h>
++#include <mach/vm_param.h>
++#include <mach/vm_statistics.h>
++#include <vm/pmap.h>
++#include <vm/vm_kern.h>
++#include <pexpert/pexpert.h>
++#include <pexpert/device_tree.h>
++#include <libkern/libkern.h>
++
++extern ppnum_t pmap_find_phys(pmap_t pmap, addr64_t va);
++/* osfmk/arm/machine_routines.h, not exported to the BSD layer */
++extern vm_offset_t ml_io_map(vm_offset_t phys_addr, vm_size_t size);
++
++#define REG_CAP         0x00
++#define REG_VER         0x08
++#define REG_IS          0x20
++#define REG_IE          0x24
++#define REG_HCS         0x30
++#define REG_HCE         0x34
++#define REG_UTRIACR     0x4c
++#define REG_UTRLBA      0x50
++#define REG_UTRLBAU     0x54
++#define REG_UTRLDBR     0x58
++#define REG_UTRLCLR     0x5c
++#define REG_UTRLRSR     0x60
++#define REG_UTMRLDBR    0x78
++#define REG_UTMRLRSR    0x80
++
++#define CAP_64AS        (1u << 24)
++#define HCS_DP          (1u << 0)
++#define HCS_UTRLRDY     (1u << 1)
++#define IS_FATAL        ((1u << 11) | (7u << 16))
++#define HOST_TIMEOUT_US 100000u
++#define UFS_MMIO_BASE   0x01d84000ull
++#define UFS_MMIO_SIZE   0x30000u
++
++#define UFS_BLOCK       4096u
++#define BOUNCE_SIZE     (1u << 20)
++#define PRDT_CHUNK      (256u << 10)            /* PRDT byte count field: 18 bits */
++#define PRDT_MAX        (BOUNCE_SIZE / PRDT_CHUNK)
++#define CMD_TIMEOUT_NS  (5ull * NSEC_PER_SEC)
++
++struct utrd {
++	uint32_t dw0, dw1, dw2, dw3;
++	uint32_t ucdba, ucdbau;
++	uint32_t resp;          /* [31:16] response UPIU offset, [15:0] length, DWORDs */
++	uint32_t prdt;          /* [31:16] PRDT offset (DWORDs), [15:0] entries */
++};
++
++struct ucd {
++	uint8_t cmd[512];
++	uint8_t resp[512];
++	struct {
++		uint32_t addr_lo, addr_hi, rsvd, dbc;
++	} prdt[PRDT_MAX];
++};
++
++/* Layout of the contiguous DMA allocation. */
++#define DMA_UTRL        0x0000                  /* 1 KiB aligned */
++#define DMA_UCD         0x1000                  /* 128 byte aligned */
++#define DMA_BOUNCE      0x4000
++#define DMA_SIZE        (DMA_BOUNCE + BOUNCE_SIZE)
++
++_Static_assert(sizeof(struct utrd) == 32, "UTRD layout");
++_Static_assert(__builtin_offsetof(struct ucd, resp) == 512, "response offset");
++_Static_assert(__builtin_offsetof(struct ucd, prdt) == 1024, "PRDT offset");
++_Static_assert(DMA_UCD + sizeof(struct ucd) <= DMA_BOUNCE, "DMA layout");
++
++static struct {
++	vm_offset_t regs;
++	vm_offset_t dma;                        /* kernel VA of the DMA allocation */
++	uint64_t dma_pa;
++	uint8_t lun;
++	uint64_t device_blocks;
++	uint64_t first_block, nblocks;          /* partition, in 4 KiB device blocks */
++	uint32_t secsize;                       /* logical sector size for the BSD layer */
++	int bmajor, cmajor;
++	dev_t bdev;
++	bool ready;
++	bool writable;                         /* boot-arg ufsrw=1 */
++	bool failed;                           /* DMA storage is never reused after transport failure */
++	bool init_attempted;
++	int init_error;
++} su;
++
++static LCK_GRP_DECLARE(kebab_ufs_grp, "kebab_ufs");
++static LCK_MTX_DECLARE(kebab_ufs_lock, &kebab_ufs_grp);
++
++static inline uint32_t
++ufs_rd(uint32_t off)
++{
++	uint32_t v = *(volatile uint32_t *)(su.regs + off);
++	__asm__ volatile("dsb sy" ::: "memory");
++	return v;
++}
++
++static inline void
++ufs_wr(uint32_t off, uint32_t v)
++{
++	__asm__ volatile("dsb sy" ::: "memory");
++	*(volatile uint32_t *)(su.regs + off) = v;
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
++/*
++ * 8796 has no invalidate_dcache64. FlushPoC_DcacheRegion is clean+invalidate,
++ * and becomes a no-op on Apple coherent configurations. Use architectural VA
++ * operations explicitly for this non-coherent host, irrespective of donor
++ * board cache macros. All ranges occupy private cache lines in our wired DMA
++ * allocation. CPU access is forbidden between submission and completion.
++ */
++static void
++dma_sync(uint32_t off, uint32_t len, bool for_device)
++{
++	uint64_t ctr;
++	__asm__ volatile("mrs %0, ctr_el0" : "=r"(ctr));
++	vm_size_t line = (vm_size_t)4 << ((ctr >> 16) & 0xf);
++	vm_offset_t start = su.dma + off;
++	vm_offset_t end = start + len;
++	__asm__ volatile("dsb sy" ::: "memory");
++	for (vm_offset_t va = start & ~(line - 1); va < end; va += line) {
++		if (for_device) {
++			__asm__ volatile("dc civac, %0" :: "r"(va) : "memory");
++		} else {
++			__asm__ volatile("dc ivac, %0" :: "r"(va) : "memory");
++		}
++	}
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
++static uint32_t
++ufs_be32(const uint8_t *p)
++{
++	return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 |
++	       (uint32_t)p[2] << 8 | p[3];
++}
++
++static int
++ufs_wait_reg(uint32_t off, uint32_t mask, uint32_t value)
++{
++	for (unsigned i = 0; i < HOST_TIMEOUT_US; i++) {
++		if ((ufs_rd(off) & mask) == value) {
++			return 0;
++		}
++		delay(1);
++	}
++	return ETIMEDOUT;
++}
++
++/* Do not free, inspect, or reuse DMA storage even if abort/stop fails. */
++static void
++ufs_fail(void)
++{
++	su.failed = true;
++	ufs_wr(REG_UTRLCLR, ~1u);                /* legacy UTRLCLR: zero clears slot */
++	ufs_wr(REG_UTRLRSR, 0);
++}
++
++/* Defined below; the write path needs it before its definition. */
++static int ufs_scsi(const uint8_t *cdb, unsigned cdb_len, uint32_t len, bool write);
++
++/*
++ * WRITE(10) of count device blocks from the bounce buffer to lba. The range is
++ * checked against the partition again here: this is the only path that puts
++ * data on the device.
++ */
++static int
++ufs_write_blocks(uint64_t lba, uint32_t count)
++{
++	if (!su.writable || !su.nblocks || count == 0 ||
++	    count > BOUNCE_SIZE / UFS_BLOCK ||
++	    lba < su.first_block || lba - su.first_block >= su.nblocks ||
++	    count > su.nblocks - (lba - su.first_block) || lba + count - 1 > UINT32_MAX) {
++		printf("KEBAB UFS: refusing write of %u blocks at 0x%llx\n", count, lba);
++		return EPERM;
++	}
++	uint8_t cdb[10] = {
++		0x2a, 0,
++		(uint8_t)(lba >> 24), (uint8_t)(lba >> 16), (uint8_t)(lba >> 8), (uint8_t)lba,
++		0, (uint8_t)(count >> 8), (uint8_t)count, 0
++	};
++	return ufs_scsi(cdb, sizeof(cdb), count * UFS_BLOCK, true);
++}
++
++static int
++ufs_sync_cache(void)
++{
++	static const uint8_t cdb[10] = { 0x35 };        /* SYNCHRONIZE CACHE(10), whole LUN */
++	return ufs_scsi(cdb, sizeof(cdb), 0, false);
++}
++
++/*
++ * One SCSI command in slot 0, data (if any) to/from the bounce buffer.
++ * Read direction only. Returns 0 or an errno.
++ */
++static int
++ufs_scsi(const uint8_t *cdb, unsigned cdb_len, uint32_t len, bool write)
++{
++	struct utrd *utrd = (struct utrd *)(su.dma + DMA_UTRL);
++	struct ucd *ucd = (struct ucd *)(su.dma + DMA_UCD);
++	uint64_t ucd_pa = su.dma_pa + DMA_UCD, bounce_pa = su.dma_pa + DMA_BOUNCE;
++
++	if (su.failed) {
++		return EIO;
++	}
++	if (cdb_len > 16 || len > BOUNCE_SIZE || (len & 3)) {
++		return EINVAL;
++	}
++	if (ufs_rd(REG_UTRLDBR) || !(ufs_rd(REG_UTRLRSR) & 1) ||
++	    !(ufs_rd(REG_HCE) & 1) || (ufs_rd(REG_IS) & IS_FATAL)) {
++		ufs_fail();
++		return EIO;
++	}
++	bzero(utrd, sizeof(*utrd));
++	bzero(ucd, sizeof(*ucd));
++
++	ucd->cmd[0] = 0x01;                     /* COMMAND UPIU */
++	ucd->cmd[1] = len ? (write ? 0x20 : 0x40) : 0x00;   /* W: out, R: in */
++	ucd->cmd[2] = su.lun;
++	ucd->cmd[3] = 0;                        /* task tag == transfer slot */
++	ucd->cmd[12] = (uint8_t)(len >> 24);
++	ucd->cmd[13] = (uint8_t)(len >> 16);
++	ucd->cmd[14] = (uint8_t)(len >> 8);
++	ucd->cmd[15] = (uint8_t)len;
++	memcpy(&ucd->cmd[16], cdb, cdb_len);
++
++	/* DD: 1 = memory to device, 2 = device to memory. */
++	utrd->dw0 = (1u << 28) | ((len ? (write ? 1u : 2u) : 0u) << 25) | (1u << 24);
++	utrd->dw2 = 0x0f;                       /* OCS invalid until updated */
++	utrd->ucdba = (uint32_t)ucd_pa;
++	utrd->ucdbau = (uint32_t)(ucd_pa >> 32);
++	utrd->resp = (512u / 4) << 16 | (512u / 4);
++	if (len) {
++		uint32_t n = 0;
++		for (uint32_t done = 0; done < len; done += PRDT_CHUNK, n++) {
++			uint32_t chunk = MIN(PRDT_CHUNK, len - done);
++			ucd->prdt[n].addr_lo = (uint32_t)(bounce_pa + done);
++			ucd->prdt[n].addr_hi = (uint32_t)((bounce_pa + done) >> 32);
++			ucd->prdt[n].dbc = chunk - 1;
++		}
++		utrd->prdt = (1024u / 4) << 16 | n;
++	}
++
++	dma_sync(DMA_UTRL, sizeof(*utrd), true);
++	dma_sync(DMA_UCD, sizeof(*ucd), true);
++	if (len) {
++		dma_sync(DMA_BOUNCE, len, true);
++	}
++	__asm__ volatile("dsb sy" ::: "memory");
++
++	ufs_wr(REG_UTRLDBR, 1);
++	uint64_t deadline;
++	nanoseconds_to_absolutetime(CMD_TIMEOUT_NS, &deadline);
++	deadline += mach_absolute_time();
++	while (ufs_rd(REG_UTRLDBR) & 1) {
++		if (ufs_rd(REG_IS) & IS_FATAL) {
++			printf("KEBAB UFS: fatal host error: IS 0x%x\n", ufs_rd(REG_IS));
++			ufs_fail();
++			return EIO;
++		}
++		if (mach_absolute_time() >= deadline) {
++			ufs_fail();
++			printf("KEBAB UFS: command 0x%02x timed out\n", cdb[0]);
++			return ETIMEDOUT;
++		}
++		delay(1);
++	}
++	__asm__ volatile("dsb sy" ::: "memory");
++	uint32_t status = ufs_rd(REG_IS);
++	ufs_wr(REG_IS, status);                 /* W1C, after saving error status */
++	if (status & IS_FATAL) {
++		printf("KEBAB UFS: fatal completion: IS 0x%x\n", status);
++		ufs_fail();
++		return EIO;
++	}
++
++	dma_sync(DMA_UTRL, sizeof(*utrd), false);
++	dma_sync(DMA_UCD, sizeof(*ucd), false);
++	if (len) {
++		dma_sync(DMA_BOUNCE, len, false);
++	}
++
++	uint32_t ocs = utrd->dw2 & 0xf;
++	if (ocs || ucd->resp[0] != 0x21 || ucd->resp[2] != su.lun ||
++	    ucd->resp[3] != 0 || ucd->resp[6]) {
++		ufs_fail();
++	}
++	if (su.failed || ucd->resp[7]) {
++		printf("KEBAB UFS: command 0x%02x failed: ocs 0x%x upiu 0x%x response 0x%x status 0x%x\n",
++		    cdb[0], ocs, ucd->resp[0], ucd->resp[6], ucd->resp[7]);
++		/* Retry only TEST UNIT READY with a well-formed unit attention. */
++		unsigned data_len = (unsigned)ucd->resp[10] << 8 | ucd->resp[11];
++		unsigned sense_len = (unsigned)ucd->resp[32] << 8 | ucd->resp[33];
++		uint8_t sense_type = ucd->resp[34] & 0x7f;
++		if (!su.failed && cdb[0] == 0 && ucd->resp[7] == 2 &&
++		    sense_len >= 3 && sense_len <= 18 && data_len >= sense_len + 2 &&
++		    data_len <= sizeof(ucd->resp) - 32 &&
++		    (((sense_type == 0x70 || sense_type == 0x71) && (ucd->resp[36] & 0xf) == 6) ||
++		    ((sense_type == 0x72 || sense_type == 0x73) && (ucd->resp[35] & 0xf) == 6))) {
++			return EAGAIN;
++		}
++		return EIO;
++	}
++	if ((ucd->resp[1] & 0x60) || ufs_be32(ucd->resp + 12) != 0) {
++		printf("KEBAB UFS: short/overflow transfer for command 0x%02x\n", cdb[0]);
++		return EIO;
++	}
++	return 0;
++}
++
++static int
++ufs_read_capacity(void)
++{
++	static const uint8_t cdb[10] = { 0x25 }; /* READ CAPACITY(10) */
++	int error = ufs_scsi(cdb, sizeof(cdb), 8, false);
++	if (error) {
++		return error;
++	}
++	const uint8_t *b = (const uint8_t *)(su.dma + DMA_BOUNCE);
++	uint32_t last = ufs_be32(b), block_size = ufs_be32(b + 4);
++	if (last == UINT32_MAX || last < 2 || block_size != UFS_BLOCK) {
++		printf("KEBAB UFS: unsupported capacity: last LBA 0x%x block size %u\n", last, block_size);
++		return ENXIO;
++	}
++	su.device_blocks = (uint64_t)last + 1;
++	return 0;
++}
++
++/* READ(10) of count device blocks at lba into the bounce buffer. */
++static int
++ufs_read_blocks(uint64_t lba, uint32_t count)
++{
++	if (count == 0 || count > BOUNCE_SIZE / UFS_BLOCK ||
++	    lba >= su.device_blocks || count > su.device_blocks - lba) {
++		return EINVAL;
++	}
++	uint8_t cdb[10] = {
++		0x28, 0,
++		(uint8_t)(lba >> 24), (uint8_t)(lba >> 16), (uint8_t)(lba >> 8), (uint8_t)lba,
++		0, (uint8_t)(count >> 8), (uint8_t)count, 0
++	};
++	return ufs_scsi(cdb, sizeof(cdb), count * UFS_BLOCK, false);
++}
++
++static int
++ufs_find_partition(const char *want)
++{
++	const uint8_t *b = (const uint8_t *)(su.dma + DMA_BOUNCE);
++	int error = ufs_read_blocks(1, 1);
++	if (error) {
++		return error;
++	}
++	if (memcmp(b, "EFI PART", 8) != 0) {
++		printf("KEBAB UFS: LUN %u has no GPT\n", su.lun);
++		return ENXIO;
++	}
++	uint64_t entry_lba;
++	uint32_t nent, esz;
++	memcpy(&entry_lba, b + 72, 8);
++	memcpy(&nent, b + 80, 4);
++	memcpy(&esz, b + 84, 4);
++	uint64_t first_usable, last_usable;
++	memcpy(&first_usable, b + 40, 8);
++	memcpy(&last_usable, b + 48, 8);
++	if (first_usable < 2 || last_usable < first_usable || last_usable >= su.device_blocks ||
++	    esz != 128 || nent == 0 || nent > BOUNCE_SIZE / esz) {
++		printf("KEBAB UFS: unsupported GPT entries %u x %u\n", nent, esz);
++		return ENXIO;
++	}
++	error = ufs_read_blocks(entry_lba, (nent * esz + UFS_BLOCK - 1) / UFS_BLOCK);
++	if (error) {
++		return error;
++	}
++	for (uint32_t i = 0; i < nent; i++) {
++		const uint8_t *e = b + i * esz;
++		static const uint8_t unused_guid[16] = { 0 };
++		if (memcmp(e, unused_guid, sizeof(unused_guid)) == 0) {
++			continue;
++		}
++		char name[37];
++		unsigned c;
++		for (c = 0; c < 36; c++) {
++			uint16_t ch = (uint16_t)(e[56 + 2 * c] | e[57 + 2 * c] << 8);
++			if (ch == 0 || ch > 0x7f) {
++				break;
++			}
++			name[c] = (char)ch;
++		}
++		if (c < 36 && (e[56 + 2 * c] || e[57 + 2 * c])) {
++			continue;                      /* do not match a non-ASCII suffix */
++		}
++		name[c] = 0;
++		if (strcmp(name, want) != 0) {
++			continue;
++		}
++		uint64_t first, last;
++		memcpy(&first, e + 32, 8);
++		memcpy(&last, e + 40, 8);
++		if (last < first || first < first_usable || last > last_usable) {
++			return ENXIO;
++		}
++		su.first_block = first;
++		su.nblocks = last - first + 1;
++		return 0;
++	}
++	printf("KEBAB UFS: no GPT partition named \"%s\"\n", want);
++	return ENOENT;
++}
++
++static int
++ufs_take_over_host(void)
++{
++	uint32_t hce = ufs_rd(REG_HCE), hcs = ufs_rd(REG_HCS);
++	if (!(hce & 1) || !(hcs & HCS_DP) || !(hcs & HCS_UTRLRDY)) {
++		printf("KEBAB UFS: host not ready (hce 0x%x hcs 0x%x)\n", hce, hcs);
++		return ENXIO;
++	}
++	if (ufs_rd(REG_UTRLDBR) || ufs_rd(REG_UTMRLDBR)) {
++		printf("KEBAB UFS: requests outstanding from the bootloader\n");
++		return EBUSY;
++	}
++	if (ufs_rd(REG_IS) & IS_FATAL) {
++		printf("KEBAB UFS: firmware left a fatal error: IS 0x%x\n", ufs_rd(REG_IS));
++		return EIO;
++	}
++	ufs_wr(REG_IE, 0);                      /* polled operation */
++	ufs_wr(REG_UTRIACR, 0);                 /* no interrupt aggregation */
++	ufs_wr(REG_IS, ufs_rd(REG_IS));
++	ufs_wr(REG_UTRLRSR, 0);
++	ufs_wr(REG_UTMRLRSR, 0);                /* no task management in this driver */
++	if (ufs_wait_reg(REG_UTRLRSR, 1, 0) || ufs_wait_reg(REG_UTMRLRSR, 1, 0) ||
++	    ufs_rd(REG_UTRLDBR) || ufs_rd(REG_UTMRLDBR)) {
++		printf("KEBAB UFS: could not stop firmware request lists\n");
++		return EBUSY;
++	}
++	uint64_t list = su.dma_pa + DMA_UTRL;
++	dma_sync(DMA_UTRL, 1024, true);          /* all 32 possible slots start empty */
++	ufs_wr(REG_UTRLBA, (uint32_t)list);
++	ufs_wr(REG_UTRLBAU, (uint32_t)(list >> 32));
++	/* Never ring a doorbell unless the host uses our list. */
++	if (ufs_rd(REG_UTRLBA) != (uint32_t)list || ufs_rd(REG_UTRLBAU) != (uint32_t)(list >> 32)) {
++		printf("KEBAB UFS: host did not take our request list\n");
++		return EIO;
++	}
++	ufs_wr(REG_UTRLRSR, 1);
++	if (ufs_wait_reg(REG_UTRLRSR, 1, 1) ||
++	    ufs_wait_reg(REG_HCS, HCS_UTRLRDY, HCS_UTRLRDY)) {
++		printf("KEBAB UFS: transfer list did not start\n");
++		ufs_wr(REG_UTRLRSR, 0);
++		return EIO;
++	}
++	return 0;
++}
++
++static int
++kebab_ufs_open(dev_t dev, int flags, __unused int devtype, __unused struct proc *p)
++{
++	if (minor(dev) != 0 || !su.ready) {
++		return ENXIO;
++	}
++	return ((flags & FWRITE) && !su.writable) ? EROFS : 0;
++}
++
++static int
++kebab_ufs_close(__unused dev_t dev, __unused int flags, __unused int devtype, __unused struct proc *p)
++{
++	return 0;
++}
++
++static void
++kebab_ufs_strategy(buf_t bp)
++{
++	int error = 0;
++	caddr_t vaddr = NULL;
++	uint32_t count = buf_count(bp);
++	uint64_t part_bytes = su.nblocks * UFS_BLOCK;
++
++	lck_mtx_lock(&kebab_ufs_lock);
++	uint64_t off = 0;
++	buf_setresid(bp, count);
++	if (!su.ready || minor(buf_device(bp)) != 0) {
++		error = ENXIO;
++		goto done;
++	}
++	bool rd = (buf_flags(bp) & B_READ) != 0;
++	if (!rd && !su.writable) {
++		error = EROFS;
++		goto done;
++	}
++	if (buf_blkno(bp) < 0 || (uint64_t)buf_blkno(bp) > part_bytes / su.secsize) {
++		error = EINVAL;
++		goto done;
++	}
++	off = (uint64_t)buf_blkno(bp) * su.secsize;
++	if (count > part_bytes - off) {
++		error = EINVAL;
++		goto done;
++	}
++	if (count == 0) {
++		goto done;
++	}
++	if (buf_map(bp, &vaddr)) {
++		error = EIO;
++		goto done;
++	}
++
++	for (uint32_t done = 0; done < count;) {
++		uint64_t pos = off + done;
++		uint64_t lba = pos / UFS_BLOCK;
++		uint32_t skip = (uint32_t)(pos % UFS_BLOCK);
++		uint32_t want = MIN(count - done, BOUNCE_SIZE - skip);
++		uint32_t blocks = (skip + want + UFS_BLOCK - 1) / UFS_BLOCK;
++		void *bounce = (void *)(su.dma + DMA_BOUNCE);
++		if (rd) {
++			error = ufs_read_blocks(su.first_block + lba, blocks);
++			if (!error) {
++				memcpy(vaddr + done, (const char *)bounce + skip, want);
++			}
++		} else {
++			/* Partial device blocks at either end: read, merge, write back. */
++			if (skip || (want % UFS_BLOCK)) {
++				error = ufs_read_blocks(su.first_block + lba, blocks);
++			}
++			if (!error) {
++				memcpy((char *)bounce + skip, vaddr + done, want);
++				error = ufs_write_blocks(su.first_block + lba, blocks);
++			}
++		}
++		if (error) {
++			/* Keep the first error: a later chunk must not erase it. */
++			break;
++		}
++		done += want;
++		buf_setresid(bp, count - done);
++	}
++	buf_unmap(bp);
++
++done:
++	lck_mtx_unlock(&kebab_ufs_lock);
++	if (error) {
++		buf_seterror(bp, error);
++	}
++	buf_biodone(bp);
++}
++
++static int
++kebab_ufs_ioctl(__unused dev_t dev, u_long cmd, caddr_t data, __unused int flag,
++    __unused struct proc *p, int is_char)
++{
++	uint32_t f;
++	uint64_t o;
++
++	switch (cmd) {
++	case DKIOCGETBLOCKSIZE:
++		f = su.secsize;
++		goto out32;
++	case DKIOCSETBLOCKSIZE:
++		if (is_char) {
++			return ENODEV;
++		}
++		memcpy(&f, data, sizeof(f));
++		if (f < DEV_BSIZE || f > UFS_BLOCK || (f & (f - 1))) {
++			return EINVAL;
++		}
++		lck_mtx_lock(&kebab_ufs_lock);
++		su.secsize = f;
++		lck_mtx_unlock(&kebab_ufs_lock);
++		return 0;
++	case DKIOCGETPHYSICALBLOCKSIZE:
++		f = UFS_BLOCK;
++		goto out32;
++	case DKIOCGETBLOCKCOUNT:
++		o = su.nblocks * UFS_BLOCK / su.secsize;
++		goto out64;
++	case DKIOCISWRITABLE:
++		f = su.writable;
++		goto out32;
++	case DKIOCSYNCHRONIZE:
++	case DKIOCSYNCHRONIZECACHE: {
++		if (!su.writable) {
++			return 0;
++		}
++		lck_mtx_lock(&kebab_ufs_lock);
++		int error = ufs_sync_cache();
++		lck_mtx_unlock(&kebab_ufs_lock);
++		return error;
++	}
++	case DKIOCGETMAXBLOCKCOUNTREAD:
++		o = BOUNCE_SIZE / su.secsize;
++		goto out64;
++	case DKIOCGETMAXBLOCKCOUNTWRITE:
++		o = su.writable ? BOUNCE_SIZE / su.secsize : 0;
++		goto out64;
++	case DKIOCGETMAXSEGMENTCOUNTREAD:
++	case DKIOCGETMAXSEGMENTCOUNTWRITE:
++		o = 1;
++		goto out64;
++	default:
++		return ENOTTY;
++	}
++out32:
++	memcpy(data, &f, sizeof(f));
++	return 0;
++out64:
++	memcpy(data, &o, sizeof(o));
++	return 0;
++}
++
++static int
++kebab_ufs_bioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
++{
++	return kebab_ufs_ioctl(dev, cmd, data, flag, p, 0);
++}
++
++static int
++kebab_ufs_cioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
++{
++	return kebab_ufs_ioctl(dev, cmd, data, flag, p, 1);
++}
++
++static int
++kebab_ufs_psize(__unused dev_t dev)
++{
++	return su.ready ? (int)MIN(su.nblocks * UFS_BLOCK / su.secsize, INT_MAX) : -1;
++}
++
++static int
++kebab_ufs_read(dev_t dev, struct uio *uio, __unused int ioflag)
++{
++	return physio(kebab_ufs_strategy, NULL, dev, B_READ, minphys, uio, (int)su.secsize);
++}
++
++static int
++kebab_ufs_write(dev_t dev, struct uio *uio, __unused int ioflag)
++{
++	if (!su.writable) {
++		return EROFS;
++	}
++	return physio(kebab_ufs_strategy, NULL, dev, B_WRITE, minphys, uio, (int)su.secsize);
++}
++
++static const struct bdevsw kebab_ufs_bdevsw = {
++	.d_open     = kebab_ufs_open,
++	.d_close    = kebab_ufs_close,
++	.d_strategy = kebab_ufs_strategy,
++	.d_ioctl    = kebab_ufs_bioctl,
++	.d_dump     = eno_dump,
++	.d_psize    = kebab_ufs_psize,
++	.d_type     = D_DISK,
++};
++
++static const struct cdevsw kebab_ufs_cdevsw = {
++	.d_open       = kebab_ufs_open,
++	.d_close      = kebab_ufs_close,
++	.d_read       = kebab_ufs_read,
++	.d_write      = kebab_ufs_write,
++	.d_ioctl      = kebab_ufs_cioctl,
++	.d_stop       = eno_stop,
++	.d_reset      = eno_reset,
++	.d_ttys       = NULL,
++	.d_select     = eno_select,
++	.d_mmap       = eno_mmap,
++	.d_strategy   = eno_strat,
++	.d_reserved_1 = eno_getc,
++	.d_reserved_2 = eno_putc,
++	.d_type       = D_DISK,
++};
++
++static int
++kebab_ufs_init(void)
++{
++	DTEntry node;
++	const void *prop = NULL;
++	uint64_t reg[2];
++	unsigned int size = 0;
++	char want[64] = "userdata";
++	int error;
++
++	if (SecureDTLookupEntry(NULL, "/kebab-ufs", &node) != kSuccess ||
++	    SecureDTGetProperty(node, "reg", &prop, &size) != kSuccess ||
++	    size != sizeof(reg)) {
++		printf("KEBAB UFS: no /kebab-ufs node in the device tree\n");
++		return ENXIO;
++	}
++	/* ADT properties are only 4-byte aligned: copy the two LE uint64_t cells. */
++	memcpy(reg, prop, sizeof(reg));
++	if (reg[0] != UFS_MMIO_BASE || reg[1] < UFS_MMIO_SIZE) {
++		printf("KEBAB UFS: invalid absolute /kebab-ufs reg\n");
++		return ENXIO;
++	}
++	PE_parse_boot_argn("ufsroot", want, sizeof(want));
++	want[sizeof(want) - 1] = 0;
++	if (want[0] == 0 || strlen(want) > 36) {
++		return EINVAL;
++	}
++
++	su.regs = ml_io_map((vm_offset_t)reg[0], UFS_MMIO_SIZE);
++	if (!su.regs) {
++		return ENOMEM;
++	}
++	uint32_t ver = ufs_rd(REG_VER), cap = ufs_rd(REG_CAP);
++	printf("KEBAB UFS: VER 0x%x CAP 0x%x HCE 0x%x HCS 0x%x\n",
++	    ver, cap, ufs_rd(REG_HCE), ufs_rd(REG_HCS));
++	/* 1.x command types differ; 4.x/MCQ and unknown versions are not handled. */
++	if (ver != 0x200 && ver != 0x210 && ver != 0x300 && ver != 0x310) {
++		printf("KEBAB UFS: unsupported UFSHCI version\n");
++		return ENXIO;
++	}
++	ppnum_t max_pnum = (cap & CAP_64AS) ? 0 : (ppnum_t)atop_64(UINT32_MAX);
++	if (kmem_alloc_contig(kernel_map, &su.dma, DMA_SIZE, PAGE_MASK, max_pnum, 0,
++	    KMA_DATA | KMA_ZERO | KMA_PERMANENT, VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) {
++		printf("KEBAB UFS: no contiguous DMA memory\n");
++		return ENOMEM;
++	}
++	ppnum_t pn = pmap_find_phys(kernel_pmap, (addr64_t)su.dma);
++	if (!pn) {
++		return ENOMEM;
++	}
++	su.dma_pa = ptoa_64(pn);
++	if ((su.dma & PAGE_MASK) || (su.dma_pa & PAGE_MASK) ||
++	    (!(cap & CAP_64AS) && su.dma_pa + DMA_SIZE - 1 > UINT32_MAX)) {
++		return EINVAL;
++	}
++	/* kmem_alloc_contig wires contiguous pages; verify before publishing DMA. */
++	for (vm_size_t off = 0; off < DMA_SIZE; off += PAGE_SIZE) {
++		ppnum_t page = pmap_find_phys(kernel_pmap, (addr64_t)(su.dma + off));
++		if (!page || ptoa_64(page) != su.dma_pa + off) {
++			printf("KEBAB UFS: noncontiguous DMA allocation\n");
++			return ENOMEM;
++		}
++	}
++	printf("KEBAB UFS: DMA PA 0x%llx size 0x%x (firmware must allow physical DMA)\n",
++	    su.dma_pa, DMA_SIZE);
++	su.lun = 0;
++	su.secsize = DEV_BSIZE;
++
++	/*
++	 * Writes stay off unless asked for: the bring-up path only reads, and a
++	 * stray write would destroy the volume this kernel is running from.
++	 */
++	uint32_t ufsrw = 0;
++	if (PE_parse_boot_argn("ufsrw", &ufsrw, sizeof(ufsrw)) && ufsrw) {
++		su.writable = true;
++	}
++
++	error = ufs_take_over_host();
++	if (!error) {
++		static const uint8_t tur[6] = { 0x00 };
++		/* The first command after the bootloader may report a unit attention. */
++		for (int i = 0; i < 3; i++) {
++			error = ufs_scsi(tur, sizeof(tur), 0, false);
++			if (error != EAGAIN) {
++				break;
++			}
++		}
++	}
++	if (!error) {
++		error = ufs_read_capacity();
++	}
++	if (!error) {
++		error = ufs_find_partition(want);
++	}
++	if (error) {
++		return error;
++	}
++
++	su.bmajor = bdevsw_add(-1, &kebab_ufs_bdevsw);
++	if (su.bmajor < 0) {
++		return ENXIO;
++	}
++	su.cmajor = cdevsw_add_with_bdev(-1, &kebab_ufs_cdevsw, su.bmajor);
++	if (su.cmajor < 0) {
++		bdevsw_remove(su.bmajor, &kebab_ufs_bdevsw);
++		return ENXIO;
++	}
++	su.bdev = makedev(su.bmajor, 0);
++	void *block_node = devfs_make_node(su.bdev, DEVFS_BLOCK, UID_ROOT, GID_OPERATOR, 0440, "ufsroot0");
++	void *char_node = devfs_make_node(makedev(su.cmajor, 0), DEVFS_CHAR, UID_ROOT, GID_OPERATOR, 0440, "rufsroot0");
++
++	if (!block_node || !char_node) {
++		if (block_node) {
++			devfs_remove(block_node);
++		}
++		if (char_node) {
++			devfs_remove(char_node);
++		}
++		cdevsw_remove(su.cmajor, &kebab_ufs_cdevsw);
++		bdevsw_remove(su.bmajor, &kebab_ufs_bdevsw);
++		return ENOMEM;
++	}
++	su.ready = true;
++	printf("KEBAB UFS: \"%s\" on LUN %u: first block 0x%llx, %llu MiB, %s\n",
++	    want, su.lun, su.first_block, su.nblocks * UFS_BLOCK >> 20,
++	    su.writable ? "read-write" : "read-only");
++	return 0;
++}
++
++/* Root device for rd=ufsroot0 (IOFindBSDRoot). */
++int kebab_ufs_rootdev(dev_t *dev);
++
++int
++kebab_ufs_rootdev(dev_t *dev)
++{
++	lck_mtx_lock(&kebab_ufs_lock);
++	if (!su.init_attempted) {
++		su.init_attempted = true;
++		su.init_error = kebab_ufs_init();
++	}
++	int error = su.init_error;
++	if (!error) {
++		*dev = su.bdev;
++	}
++	lck_mtx_unlock(&kebab_ufs_lock);
++	return error;
++}
++#endif /* __arm64__ */
+diff --git a/iokit/bsddev/IOKitBSDInit.cpp b/iokit/bsddev/IOKitBSDInit.cpp
+index 92142f7..4866423 100644
+--- a/iokit/bsddev/IOKitBSDInit.cpp
++++ b/iokit/bsddev/IOKitBSDInit.cpp
+@@ -69,6 +69,10 @@ extern void di_root_ramfile(IORegistryEntry * entry);
+ extern int IODTGetDefault(const char *key, void *infoAddr, unsigned int infoSize);
+ extern boolean_t cpuid_vmm_present(void);
+ 
++#if defined(__arm64__)
++extern int kebab_ufs_rootdev(dev_t *dev);
++#endif
++
+ #define ROUNDUP(a, b) (((a) + ((b) - 1)) & (~((b) - 1)))
+ 
+ #define IOPOLLED_COREFILE       (CONFIG_KDP_INTERACTIVE_DEBUGGING)
+@@ -720,6 +724,22 @@ IOFindBSDRoot( char * rootName, unsigned int rootNameSize,
+ 		rdBootVar[0] = 0;
+ 	}
+ 
++#if defined(__arm64__)
++	/* This BSD disk does not publish an IOMedia; rd= overrides root-matching. */
++	if (strcmp(rdBootVar, "ufsroot0") == 0) {
++		OSSafeReleaseNULL(matching);
++		int ufs_error = kebab_ufs_rootdev(root);
++		if (ufs_error) {
++			panic("IOFindBSDRoot: KEBAB UFS root %s unavailable: %d", rdBootVar, ufs_error);
++		}
++		strlcpy(rootName, rdBootVar, rootNameSize);
++		IOLog("BSD root: %s, major %d, minor %d\n", rootName, major(*root), minor(*root));
++		*oflags = 0;
++		service = NULL;
++		goto iofrootx;
++	}
++#endif
++
+ 	if ((regEntry = IORegistryEntry::fromPath( "/chosen", gIODTPlane ))) {
+ 		do {
+ 			di_root_ramfile(regEntry);
