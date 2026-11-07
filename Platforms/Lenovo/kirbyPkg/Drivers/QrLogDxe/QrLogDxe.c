@@ -201,6 +201,46 @@ ReportProtocols (
     ));
 
   //
+  // UniXNUConfigLoad walks every SimpleFileSystem handle and opens
+  // \\EFI\\UniXNU\\unixnu.toml through each.  Do the same here: if this works
+  // but UniXNU still shows the built-in configuration, the fault is on
+  // UniXNU's side -- its own handle list or its path PCD -- and not in the
+  // volume.
+  //
+  Handles = NULL;
+  Count   = 0;
+  if (!EFI_ERROR (gBS->LocateHandleBuffer (ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &Count, &Handles)) &&
+      (Count > 0))
+  {
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *Fs;
+    EFI_FILE_PROTOCOL                *Root;
+    EFI_FILE_PROTOCOL                *File;
+    EFI_STATUS                       Lower;
+    EFI_STATUS                       Upper;
+
+    Lower = EFI_NOT_FOUND;
+    Upper = EFI_NOT_FOUND;
+    if (!EFI_ERROR (gBS->HandleProtocol (Handles[0], &gEfiSimpleFileSystemProtocolGuid, (VOID **)&Fs)) &&
+        !EFI_ERROR (Fs->OpenVolume (Fs, &Root)))
+    {
+      Lower = Root->Open (Root, &File, L"\\EFI\\UniXNU\\unixnu.toml", EFI_FILE_MODE_READ, 0);
+      if (!EFI_ERROR (Lower)) {
+        File->Close (File);
+      }
+
+      Upper = Root->Open (Root, &File, L"\\EFI\\UNIXNU\\UNIXNU.TOM", EFI_FILE_MODE_READ, 0);
+      if (!EFI_ERROR (Upper)) {
+        File->Close (File);
+      }
+
+      Root->Close (Root);
+    }
+
+    DEBUG ((DEBUG_ERROR, "QrLog: toml lo=%r up=%r\n", Lower, Upper));
+    FreePool (Handles);
+  }
+
+  //
   // If UnicodeCollation is present but Fat still refuses, the next suspect is
   // the volume itself.  Read LBA 0 through BlockIo and print the boot sector
   // fields Fat validates, so "Fat never ran" and "Fat read a BPB it dislikes"
@@ -504,13 +544,15 @@ QrLogDxeEntry (
     );
 
   //
-  // Hand the panel back to BDS.  The payload chain works end to end now:
-  //   KIRBYINITRD: volume at 0x... size 0x2000 Success
-  //   QrLog: pcd2=1 blkio=1 diskio=1 fs=1 uc1=0 uc2=1
-  // so BDS can start UniXNU through PcdBootManagerMenuFile and UniXNU should
-  // find \EFI\UniXNU\unixnu.toml on that volume instead of falling back to the
-  // built-in configuration.  Restore the stall loop only when another capture
-  // is needed.
+  // Hold the panel for a capture.  UniXNU still reports 'built-in
+  // configuration' although Fat mounted the volume (fs=1), so the question is
+  // now whether the file can be opened through the SimpleFileSystem API at
+  // all -- which is exactly what UniXNU does.  Remove this loop once the
+  // capture explains it.
   //
+  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
+    gBS->Stall (1000000);
+  }
+
   return EFI_SUCCESS;
 }
