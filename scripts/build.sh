@@ -150,33 +150,26 @@ cp    "$ROOT/Resources/Configs/kirby.toml" Resources/Configs/
 # firmware's Fat does not fold case (measured: `toml lo=Not Found up=Success`).
 #
 log "building the payload volume"
-python3 "$ROOT/scripts/mkpayload.py" \
-  --output Platforms/Lenovo/kirbyPkg/Resources/payload.bin \
-  --size-mib 8 --cluster-sectors 2 --label TB321FUESP \
-  --add "EFI/UniXNU/unixnu.toml=Platforms/Lenovo/kirbyPkg/Resources/payload-tree/EFI/UniXNU/unixnu.toml"
 #
-# UniXNU payload.  build_uefi.py:331 passes "--ramdisk Resources/ramdisk" to
-# mkbootimg, so this file becomes the boot image's ramdisk field.  On a GKI
-# target that is the only way the payload can ride along with `fastboot boot`:
-# the boot partition itself has no ramdisk, and we never write vendor_boot.
-# UniXNURamDiskDxe then turns it into a read-only block device via the Mu FDT
-# initrd handover.
+# The kernel is not committed: it is a 52 MB Apple-derived binary.  Take it from
+# the kernel-out branch, which the macOS job writes when a build succeeds, so a
+# new kernel is picked up by the next firmware build without touching git.
 #
-if [ -f "$ROOT/Resources/ramdisk" ]; then
-  cp "$ROOT/Resources/ramdisk" Resources/ramdisk
-  log "staged payload ramdisk ($(stat -c%s Resources/ramdisk) bytes)"
+KERNEL_TMP="$ROOT/Platforms/Lenovo/kirbyPkg/Resources/kernel.macho"
+rm -f "$KERNEL_TMP"
+if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
+  git -C "$ROOT" show FETCH_HEAD:kernel.macho > "$KERNEL_TMP" 2>/dev/null
+  log "kernel from kernel-out: $(wc -c < "$KERNEL_TMP") bytes"
+else
+  log "no kernel-out branch; the payload will carry the config only"
 fi
-# 用我们自己的最小设备树覆盖 kirby.dtb（ButtonsDxe 需要 /soc/buttons 节点）
-cp    "$ROOT/Resources/DTBs/kirby.dtb"     Resources/DTBs/
-if [ -f "$ROOT/Resources/DTBs/kirby-buttons.dts" ]; then
-  dtc -I dts -O dtb -o Resources/DTBs/kirby.dtb "$ROOT/Resources/DTBs/kirby-buttons.dts"
-  log "compiled kirby-buttons.dts -> kirby.dtb ($(stat -c%s Resources/DTBs/kirby.dtb) bytes)"
+PAYLOAD_ARGS=(--output Platforms/Lenovo/kirbyPkg/Resources/payload.bin
+              --size-mib 64 --cluster-sectors 8 --label TB321FUESP
+              --add "EFI/UniXNU/unixnu.toml=Platforms/Lenovo/kirbyPkg/Resources/payload-tree/EFI/UniXNU/unixnu.toml")
+if [ -s "$KERNEL_TMP" ]; then
+  PAYLOAD_ARGS+=(--add "EFI/UniXNU/Payloads/kernel.macho=$KERNEL_TMP")
 fi
-  mkdir -p Platforms/Lenovo/kirbyPkg/FdtBlob
-  cp Resources/DTBs/kirby.dtb Platforms/Lenovo/kirbyPkg/FdtBlob/lanai-lenovo-kirby.dtb
-  log "staged FdtBlob for FV embedding"
-mkdir -p Binaries
-cp -r "$ROOT/Binaries/kirby" Binaries/
+python3 "$ROOT/scripts/mkpayload.py" "${PAYLOAD_ARGS[@]}"
 
 #
 # UniXNU required integration

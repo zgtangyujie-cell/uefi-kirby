@@ -1,27 +1,24 @@
 version = 1
 
 #
-# Minimal payload for the kirby bring-up.
+# kirby bring-up payload.
 #
-# It does not boot anything yet.  Its only job is to prove the chain
-#   ramdisk -> UniXNURamDiskDxe -> DiskIoDxe -> Fat -> UniXNU
-# works: if UniXNU shows this title and this entry instead of
-# "built-in configuration", then the payload volume was found and read.
+# The kernel was built from Apple's source in CI (xnu-10063.141.1 with the
+# UniXNU patch series) and delivered on the kernel-out branch; build.sh copies
+# it into Payloads/ while the volume is written.
 #
-# The single entry deliberately points at a file that does not exist, so
-# selecting it must fail with "not found".  That failure is the success
-# signal here -- the point is the menu content, not the boot.
+# dtb = "firmware" keeps the device tree the bootloader handed over, which is
+# the only one that describes this tablet.
 #
 [boot]
 timeout = 10
-default = "probe"
-
-[ui]
-title = "Kirby Probe"
+default = "xnu"
 
 [[entry]]
-id = "probe"
-title = "Payload found"
-type = "efi"
-path = "Payloads/missing.efi"
+id = "xnu"
+title = "XNU"
+type = "xnu"
+path = "Payloads/kernel.macho"
+dtb = "firmware"
+args = "-v serial=3"
 enabled = true
