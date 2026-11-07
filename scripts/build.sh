@@ -273,6 +273,31 @@ print("DarwinBoot: Fail path holds 20 s, then returns")
 fi
 
 #
+# Diagnostic only: paint the framebuffer base DarwinBoot actually handed over.
+# The dark question is whether boot_args->Video[0] is zero (GOP lookup failed)
+# or a real address; the console chain depends on it, and the Print line that
+# carries it gets truncated in photographs.  DiagDraw writes straight to the
+# framebuffer in large glyphs, right before ExitBootServices.
+#
+if [ -f "$DARWINBOOT_C" ]; then
+  python3 -c '
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+t = p.read_text()
+if "KirbyDiag" in t:
+    sys.exit(0)
+needle = "DEBUG ((DEBUG_ERROR, \"\\nExiting boot services. A green bar across the top\\nmarks the loader handoff before the kernel branch.\\n\"));"
+if needle not in t:
+    sys.exit("hand-off DEBUG line not found in DarwinBoot.c")
+paint = "\n  { CHAR16 KirbyDiag[96]; UnicodeSPrint (KirbyDiag, sizeof (KirbyDiag), L\"video0 0x%lx  video1 0x%lx  video2 0x%lx\", Video[0], Video[1], Video[2]); DiagDraw (KirbyDiag, 6); }"
+t = t.replace(needle, needle + paint, 1)
+p.write_text(t)
+print("DarwinBoot: paints video0/1/2 before ExitBootServices")
+' "$DARWINBOOT_C" || { log "DarwinBoot video diagnostic patch failed"; exit 1; }
+fi
+
+#
 # Menu.c: after a failed boot the menu must not wait forever.  BDS leaves a
 # ConIn handle behind even when "Connect ConIn" failed, so CountInputDevices()
 # reports > 0; Main.c:169 then sets Countdown = FALSE and Menu.c:114 hands
