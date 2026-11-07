@@ -224,17 +224,20 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
 import struct, sys
 # _start is the single `b` to _start_first_cpu.  The probe replaces it with a
-# branch into the stage-1 cave 0x78 bytes later, so the expected word is
-# `b +0x78` = 0x1400001E.  Checking the exact value rather than "anything
-# changed" catches a probe that wrote a branch to the wrong place.
+# branch into the stage-1 cave, which sits 0x78 bytes later: `b +0x78` is
+# 0x1400001E.  The stage code starts at the cave itself -- va
+# 0xFFFFFFF0073F0500, file 0x3EC500 -- while the 0x74 bytes between _start+4
+# and the cave stay zero.  Look for the code at the cave, not right after
+# _start: the first version of this check read 0x3EC48C and failed a build
+# whose probe had in fact been installed.
 d = open(sys.argv[1], 'rb').read()
 word = struct.unpack_from('<I', d, 0x3EC488)[0]
 if word == 0x140006F5:
     sys.exit("_start is still the original branch")
 if word != 0x1400001E:
     sys.exit("_start is %#010x, the stage-1 branch is 0x1400001e" % word)
-if not any(struct.unpack_from('<8I', d, 0x3EC48C)):
-    sys.exit("_start branches into empty padding")
+if not any(struct.unpack_from('<8I', d, 0x3EC500)):
+    sys.exit("the stage-1 cave at 0x3EC500 is empty")
 print(f"_start now {word:#010x}, stage-1 cave written")
 PY
     else
