@@ -156,10 +156,22 @@ log "building the payload volume"
 # new kernel is picked up by the next firmware build without touching git.
 #
 KERNEL_TMP="$ROOT/Platforms/Lenovo/kirbyPkg/Resources/kernel.macho"
-rm -f "$KERNEL_TMP"
+ADT_TMP="$ROOT/Platforms/Lenovo/kirbyPkg/Resources/kernel.macho.adt"
+rm -f "$KERNEL_TMP" "$ADT_TMP"
 if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
   git -C "$ROOT" show FETCH_HEAD:kernel.macho > "$KERNEL_TMP" 2>/dev/null
   log "kernel from kernel-out: $(wc -c < "$KERNEL_TMP") bytes"
+  #
+  # DarwinBoot.c:648-650 unconditionally opens <KernelPath>.adt and returns
+  # EFI_NOT_FOUND when it is missing -- unlike .trustcache/.gpuaddon/.vroot,
+  # which all tolerate NOT_FOUND.  So this sidecar is mandatory, not optional.
+  #
+  if git -C "$ROOT" show FETCH_HEAD:kernel.macho.adt > "$ADT_TMP" 2>/dev/null; then
+    log "ADT from kernel-out: $(wc -c < "$ADT_TMP") bytes"
+  else
+    rm -f "$ADT_TMP"
+    log "kernel-out has no kernel.macho.adt; DarwinBoot will report Not Found"
+  fi
 else
   log "no kernel-out branch; the payload will carry the config only"
 fi
@@ -168,6 +180,9 @@ PAYLOAD_ARGS=(--output Platforms/Lenovo/kirbyPkg/Resources/payload.bin
               --add "EFI/UniXNU/unixnu.toml=Platforms/Lenovo/kirbyPkg/Resources/payload-tree/EFI/UniXNU/unixnu.toml")
 if [ -s "$KERNEL_TMP" ]; then
   PAYLOAD_ARGS+=(--add "EFI/UniXNU/Payloads/kernel.macho=$KERNEL_TMP")
+fi
+if [ -s "$ADT_TMP" ]; then
+  PAYLOAD_ARGS+=(--add "EFI/UniXNU/Payloads/kernel.macho.adt=$ADT_TMP")
 fi
 python3 "$ROOT/scripts/mkpayload.py" "${PAYLOAD_ARGS[@]}"
 

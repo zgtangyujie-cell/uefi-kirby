@@ -487,13 +487,6 @@ QrLogDxeEntry (
   EFI_STATUS  Status;
 
   mGop      = NULL;
-  //
-  // Diagnostic build: paint nothing.  The panel keeps whatever the firmware left
-  // on it, so anything that appears afterwards is BDS or UniXNU drawing -- which
-  // is the question.  Put the body back by deleting this return.
-  //
-  return EFI_SUCCESS;
-
   mFrame    = 0;
   mTickReported = FALSE;
 
@@ -552,28 +545,12 @@ QrLogDxeEntry (
     );
 
   //
-  // Hold the panel: this build is asking a question, not showing off the
-  // payload.  ScanKernelWindow either found the boot image's 8 MiB ramdisk
-  // inside the ABL kernel window or it did not, and that answer only exists
-  // in the log -- BDS would paint UniXNU over it.
+  // No hold.  This driver runs before BDS, so any Stall here keeps UniXNU from
+  // ever starting and leaves a *stale* QR on the panel -- the exact symptom of
+  // "the photograph never changes".  build.sh disables BDS/UiApp ClearScreen,
+  // so the QR stays underneath while FrameBufferSerialPortLib writes every
+  // later DEBUG line (menu, dt:, DARWINBOOT:) straight onto the panel as text.
+  // That makes one photograph show both the QR log and the live boot progress.
   //
-  //
-  // Ten minutes, not 194 days.  The old bound was 0xFFFFFF rounds of one
-  // second each; it held the panel long enough that a capture looked like a
-  // hang, and the only way out was a power cycle.  Nothing here needs more than
-  // a few minutes to be photographed.
-  //
-  for (UINTN Round = 0; Round < 60; Round++) {
-    gBS->Stall (1000000);
-  }
-
-  //
-  // Return at once.  The payload now carries a kernel, so BDS has to reach
-  // UniXNU instead of being held here: the countdown, the menu and the XNU
-  // handoff all happen after this driver.  Restore the capture hold (and the
-  // ResetSystem that followed it) when a photograph is needed again.
-  //
-  return EFI_SUCCESS;
-
   return EFI_SUCCESS;
 }

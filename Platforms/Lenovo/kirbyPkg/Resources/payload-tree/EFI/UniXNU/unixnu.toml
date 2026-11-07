@@ -7,11 +7,16 @@ version = 1
 # UniXNU patch series) and delivered on the kernel-out branch; build.sh copies
 # it into Payloads/ while the volume is written.
 #
-# dtb = "firmware" keeps the device tree the bootloader handed over, which is
-# the only one that describes this tablet.
+# No dtb key on purpose.  UniXNULib/Inject.c:364-368 resolves dtb="firmware"
+# through gFdtTableGuid and returns EFI_NOT_FOUND when the table/header is
+# absent; and Boot.c:86 would then hand a non-NULL DeviceTree to DarwinBoot,
+# which rejects it outright (DarwinBoot.c:605-608).  Official payload config
+# (docs/concepts/payload.md:35-42) has no dtb at all.  The ADT sidecar
+# Payloads/kernel.macho.adt is what XNU actually consumes.
 #
 [boot]
-timeout = 10
+timeout = 60
+fallback_timeout = 60
 default = "xnu"
 
 [[entry]]
@@ -19,6 +24,5 @@ id = "xnu"
 title = "XNU"
 type = "xnu"
 path = "Payloads/kernel.macho"
-dtb = "firmware"
-args = "-v serial=3"
+args = "-v"
 enabled = true
