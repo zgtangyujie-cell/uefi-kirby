@@ -104,6 +104,25 @@ jobs:
             echo "::warning title=no kernel::out/ has no kernel.macho"
           fi
 
+      - name: Publish the kernel to the kernel-out branch
+        if: success()
+        working-directory: devices/UniXNU
+        run: |
+          set -euo pipefail
+          src=$(dirname "$(find out -name 'kernel.macho' -type f | head -1)")
+          [ -n "$src" ] || { echo "no kernel.macho"; exit 1; }
+          mkdir -p /tmp/out
+          cp "$src"/kernel.macho /tmp/out/
+          [ -f "$src/kernel.macho.adt" ] && cp "$src/kernel.macho.adt" /tmp/out/ || true
+          cd /tmp/out
+          git init -q
+          git -c user.email=ci@example.com -c user.name=ci checkout -q -b kernel-out
+          git add -A
+          git -c user.email=ci@example.com -c user.name=ci commit -qm "kernel.macho $(date -u +%FT%TZ)"
+          # The repository is private: this is transport for one device, not publication.
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" kernel-out
+          ls -l /tmp/out
+
       - name: Upload the text logs
         if: always()
         uses: actions/upload-artifact@v4
