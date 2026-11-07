@@ -504,14 +504,13 @@ QrLogDxeEntry (
     );
 
   //
-  // Hold the panel for a capture.  The payload volume is published now
-  // (UNIXNURAMDISK reports Success) but FAT never produced a SimpleFileSystem,
-  // and the three counts above say which stage stopped.  Returning would let
-  // BDS and UniXNU paint over them.
+  // Hand the panel back to BDS.  The payload chain works end to end now:
+  //   KIRBYINITRD: volume at 0x... size 0x2000 Success
+  //   QrLog: pcd2=1 blkio=1 diskio=1 fs=1 uc1=0 uc2=1
+  // so BDS can start UniXNU through PcdBootManagerMenuFile and UniXNU should
+  // find \EFI\UniXNU\unixnu.toml on that volume instead of falling back to the
+  // built-in configuration.  Restore the stall loop only when another capture
+  // is needed.
   //
-  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
-    gBS->Stall (1000000);
-  }
-
   return EFI_SUCCESS;
 }
