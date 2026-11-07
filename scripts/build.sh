@@ -247,12 +247,11 @@ if [ -f "$UNIXNU_DXE_C" ]; then
 fi
 
 #
-# Diagnostic hold, one round only.  DarwinBoot's Fail path prints
-# "DARWINBOOT: boot refused: <status>" and then returns to UniXNU, whose
-# repaint covers that line, so the error code that decides the next step is
-# never readable.  CpuDeadLoop() right after the Print keeps the panel on that
-# line.  It cannot brick anything: the loop runs in firmware, a power cycle
-# comes back to Android, and `fastboot boot` never wrote a partition.
+# Diagnostic hold, one round only, and deliberately NOT a dead loop: the owner
+# does not want the tablet parked on a debug screen.  DarwinBoot's Fail path
+# prints "DARWINBOOT: boot refused: <status>" and returns to UniXNU, whose
+# repaint covers the line immediately.  Hold the panel for twenty seconds so
+# the status can be read, then let it return and retry.
 #
 DARWINBOOT_C="$WORK/unixnu/drivers/DarwinBoot/DarwinBootPkg/Driver/DarwinBoot.c"
 if [ -f "$DARWINBOOT_C" ]; then
@@ -261,15 +260,39 @@ import sys
 from pathlib import Path
 p = Path(sys.argv[1])
 t = p.read_text()
-if "KIRBY_DIAG_HOLD" in t:
+if "KirbyHold" in t:
     sys.exit(0)
 needle = "Print (L\"DARWINBOOT: boot refused: %r; firmware retained\\n\", Status);"
 if needle not in t:
     sys.exit("boot-refused print not found in DarwinBoot.c")
-t = t.replace(needle, needle + "\n  KIRBY_DIAG_HOLD: CpuDeadLoop ();", 1)
+hold = "\n  for (UINTN KirbyHold = 0; KirbyHold < 20; KirbyHold++) { gBS->Stall (1000000); }"
+t = t.replace(needle, needle + hold, 1)
 p.write_text(t)
-print("DarwinBoot: Fail path now holds the panel")
+print("DarwinBoot: Fail path holds 20 s, then returns")
 ' "$DARWINBOOT_C" || { log "DarwinBoot diagnostic hold patch failed"; exit 1; }
+fi
+
+#
+# Menu.c: after a failed boot the menu must not wait forever.  BDS leaves a
+# ConIn handle behind even when "Connect ConIn" failed, so CountInputDevices()
+# reports > 0; Main.c:169 then sets Countdown = FALSE and Menu.c:114 hands
+# RemainingMs = -1, i.e. an unconditional wait.  That is the "stuck on the
+# menu" the owner kept hitting.  Use fallback_timeout in that branch too.
+#
+MENU_C="$WORK/unixnu/package/UniXNUPkg/Library/UniXNULib/Menu.c"
+if [ -f "$MENU_C" ]; then
+  python3 -c '
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+t = p.read_text()
+old = "RemainingMs = HasInput ? -1 : (INTN)Config->FallbackTimeout * 1000;"
+new = "RemainingMs = (INTN)Config->FallbackTimeout * 1000;"
+if old not in t:
+    sys.exit("expected RemainingMs line not found in Menu.c")
+p.write_text(t.replace(old, new))
+print("Menu.c: failed-boot menu retries every fallback_timeout")
+' "$MENU_C" || { log "Menu.c retry patch failed"; exit 1; }
 fi
 
 #
