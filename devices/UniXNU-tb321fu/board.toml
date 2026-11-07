@@ -21,8 +21,14 @@ kit = "tb321fu"
 
 # 最小闭环：先只选输入已满足的实现（官方第 6 步）。
 # 显示 / 触控 / GPU 驱动等 bring-up 阶段 1 通过后再加。
+#
+# ShengUfs（2026-11-08 加）：官方 iPadOS 17.7.11 的存储正路，见
+# https://unixnu.com/zh/porting/ufs 与 UniXNU-sheng 的
+# [os_overrides."ipados-17.7.11-21H461"]。components.toml 里它声明
+# dependencies = ["VirtioMmioBlock", "VerifiedRoot"]，archive_plan 会递归带进来，
+# 不用在这里重复写。
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot"]
+include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot", "ShengUfs"]
 
 # 与 caihong / giulia 相同的 SM8650 目标：iPad7,1 / iPadOS 17.7.11 (21H461)。
 # 01-设备输入.md 附录：ADT 会伪造平台身份，IPSW 机型与平板无关，可沿用。
@@ -55,13 +61,24 @@ first_lba = 3613096
 last_lba  = 123365370      # 实测复核通过 2026-11-08
 lba_bytes = 4096
 
+# archives 是**替换**语义：profile/arch/arm64 给了起手 8 项，这里必须写全再追加。
+# component:ShengUfs 会按 components.toml 的 dependencies 递归带出
+# VirtioMmioBlock 与 VerifiedRoot，所以只列 ShengUfs 一个就够。
 [kernel]
 defconfig = "tb321fu_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8650.config", "os:configs/ipados.config"]
 patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "os:patches/xnu/series", "device:patches/xnu/series"]
-# TODO: [kernel] archives / [kernel.prelink] 需按格式 2 规范补齐。
-# caihong 是格式 1，其 archives 含 CaihongPmgrNub / build-sheng-ufs 等设备专用项，
-# 不能整段照抄。参考 https://unixnu.com/zh/porting/device-repository#内核
+archives = [
+  "build-corecrypto-14.py",
+  "build-corecrypto-14.py --namespace",
+  "component:ArmDTPlatform",
+  "component:ArmCpu",
+  "component:SoftwareAES",
+  "build-software-aes-bindings.py",
+  "build-mockfs-fixture.py",
+  "build-libpthread-kernel.py",
+  "component:ShengUfs",
+]
 
 [device_tree]
 source = "device:dts/tb321fu.dts"
@@ -122,7 +139,7 @@ panic_screen = true
 # 下没有 ConIn。官方 Menu.c:152-155 在 RemainingMs==0 时直接 return DefaultIndex，
 # 不创建 EVT_TIMER 事件、不依赖输入设备 → timeout=0 可自动启动默认项。
 timeout = 0
-kernel_args = ["-v", "serial=3"]
+kernel_args = ["-v", "serial=3", "native-ufs-root=1"]
 
 [package]
 unixnu = "../UniXNU"

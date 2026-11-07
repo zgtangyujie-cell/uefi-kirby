@@ -39,3 +39,28 @@
 &cpu5 { unixnu,cluster-type = "P"; };
 &cpu6 { unixnu,cluster-type = "P"; };
 &cpu7 { unixnu,cluster-type = "P"; };
+
+/*
+ * UFS —— 存储，也是根卷的载体。
+ *
+ * sm8650.dtsi 里 ufshc@1d84000 和 phy@1d80000 都是 status = "disabled"，
+ * 而 devicetree.generate() 只把 enabled 且带 unixnu,adt-name 的节点写进 ADT
+ * （scripts/unixnu/devicetree.py:370），所以这里必须打开。
+ *
+ * compatible 同时声明 sm8550：ShengUfs 的匹配是
+ *   NativeUfs.cpp:139  contains(text, ..., "qcom,sm8550-ufshc")
+ * 一个字符串包含判断。SM8650 的 UFS 控制器和 SM8550 同基址同长度：
+ *   ufshc@1d84000  reg = <0 0x1d84000 0 0x3000>
+ *   phy@1d80000    reg = <0 0x1d80000 0 0x2000>
+ * ShengUfs 的 GccUfs.h 写的也是 UFS_HC_BASE 0x01d84000 / GCC_BASE 0x00100000。
+ * 保留 sm8650 在前，如实说明这块硬件是 SM8650 的，只是寄存器模型与 SM8550 相同。
+ */
+&ufs {
+    status = "okay";
+    compatible = "qcom,sm8650-ufshc", "qcom,sm8550-ufshc";
+};
+
+&ufsphy {
+    status = "okay";
+    compatible = "qcom,sm8650-qmp-ufs-phy", "qcom,sm8550-qmp-ufs-phy";
+};
