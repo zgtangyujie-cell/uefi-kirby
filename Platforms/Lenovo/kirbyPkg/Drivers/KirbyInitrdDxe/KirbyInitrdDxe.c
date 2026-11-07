@@ -416,19 +416,18 @@ ReportRegions (
 }
 
 /**
-  Sweep the two reserved blocks that sit next to the kernel.
+  Sweep the lowest reserved block, and only that one.
 
-  The memory map shows three reserved blocks big enough to hold the payload:
-  0x80000000 (18 MiB), 0x82600000 (36 MiB) and 0xD4E23000 (46 MiB).  A
-  bootloader parks kernel and ramdisk in the first two, so walk them at 2 MiB
-  steps -- the bootloader aligns a ramdisk to at least that -- and check the
-  volume label wherever a candidate lands.  The third block stays untouched: it
-  is far from the kernel and is the most likely home of the range that aborted
-  the build which scanned every region type.
+  Two builds died here.  Both walked several reserved blocks and both ended in
+  a data abort, so at least one of them is not readable even though the memory
+  map describes it.  What is left is the block the kernel itself runs from: its
+  first page must be readable, and it is where a bootloader that loads a
+  ramdisk parks it -- right after the kernel, 1 MiB or 4 KiB aligned, not
+  necessarily on a 2 MiB boundary (the previous attempt stepped 2 MiB and would
+  have walked straight past 0x80100000).
 
-  This doubles as the answer to a different question: if the head of neither
-  block is a FAT boot sector and nothing inside them matches, the bootloader
-  never loaded the ramdisk at all, and no amount of searching will find it.
+  So: pick the lowest reserved block at least as big as the payload, print its
+  head so a miss still says what lives there, then walk it at 4 KiB.
 **/
 STATIC
 EFI_STATUS
@@ -439,14 +438,14 @@ ProbeReserved (
   )
 {
   UINTN   At;
-  UINTN   Probes;
   UINT8   *Head;
   UINT64  Bytes;
+  UINT64  Base;
   UINT64  Offset;
   UINT64  Found;
 
-  Probes = 0;
-  for (At = 0; (At + DescriptorSize <= Size) && (Probes < 2); At += DescriptorSize) {
+  Base = 0;
+  for (At = 0; At + DescriptorSize <= Size; At += DescriptorSize) {
     EFI_MEMORY_DESCRIPTOR  *Entry = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + At);
 
     if (Entry->Type != EfiReservedMemoryType) {
@@ -454,25 +453,51 @@ ProbeReserved (
     }
 
     Bytes = EFI_PAGES_TO_SIZE (Entry->NumberOfPages);
-    if ((Bytes < SCAN_MIN_REGION) || (Entry->PhysicalStart >= 0x90000000ULL)) {
+    //
+    // Bound the candidates hard.  A block far below the kernel could be a
+    // multi-gigabyte hole that is merely *described* as reserved, and walking
+    // it at 4 KiB would both take minutes and reach memory that is not backed.
+    //
+    if ((Bytes < SCAN_MIN_REGION) || (Bytes > 64ULL * 1024 * 1024)) {
       continue;
     }
 
-    Head = (UINT8 *)(UINTN)Entry->PhysicalStart;
-    DEBUG ((
-      DEBUG_ERROR,
-      "KIRBYINITRD: p 0x%lx %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x\n",
-      Entry->PhysicalStart,
-      Head[0], Head[1], Head[2], Head[3], Head[4], Head[5], Head[6], Head[7],
-      Head[8], Head[9], Head[10], Head[11], Head[12], Head[13], Head[14], Head[15]
-      ));
-    Probes++;
+    if ((Entry->PhysicalStart < 0x40000000ULL) || (Entry->PhysicalStart >= 0x90000000ULL)) {
+      continue;
+    }
 
-    for (Offset = 0; Offset + RAM_BLOCK_SIZE <= Bytes; Offset += 2 * 1024 * 1024) {
-      Found = VolumeSizeAt ((UINT8 *)(UINTN)(Entry->PhysicalStart + Offset), Bytes - Offset);
-      if (Found != 0) {
-        return InstallVolume (Entry->PhysicalStart + Offset, Found);
-      }
+    if ((Base == 0) || (Entry->PhysicalStart < Base)) {
+      Base = Entry->PhysicalStart;
+    }
+  }
+
+  if (Base == 0) {
+    return EFI_NOT_FOUND;
+  }
+
+  Head = (UINT8 *)(UINTN)Base;
+  DEBUG ((
+    DEBUG_ERROR,
+    "KIRBYINITRD: p 0x%lx %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x\n",
+    Base,
+    Head[0], Head[1], Head[2], Head[3], Head[4], Head[5], Head[6], Head[7],
+    Head[8], Head[9], Head[10], Head[11], Head[12], Head[13], Head[14], Head[15]
+    ));
+
+  Bytes = 0;
+  for (At = 0; At + DescriptorSize <= Size; At += DescriptorSize) {
+    EFI_MEMORY_DESCRIPTOR  *Entry = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + At);
+
+    if ((Entry->Type == EfiReservedMemoryType) && (Entry->PhysicalStart == Base)) {
+      Bytes = EFI_PAGES_TO_SIZE (Entry->NumberOfPages);
+      break;
+    }
+  }
+
+  for (Offset = 0; (Bytes != 0) && (Offset + RAM_BLOCK_SIZE <= Bytes); Offset += 4 * 1024) {
+    Found = VolumeSizeAt ((UINT8 *)(UINTN)(Base + Offset), Bytes - Offset);
+    if (Found != 0) {
+      return InstallVolume (Base + Offset, Found);
     }
   }
 
