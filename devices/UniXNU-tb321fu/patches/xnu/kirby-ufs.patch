@@ -17,12 +17,7 @@ index 0000000..1d66736
 +++ b/bsd/dev/kirby_ufs.c
 @@ -0,0 +1,852 @@
 +/*
-+ * TB321FU (kirby) internal UFS root device (read-only).
- *
- * Ported from UniXNU-kebab's bsd/dev/kebab_ufs.c (SM8250). The SM8650
- * UFS controller sits at the same 0x01d84000/0x3000 window as SM8550 and
- * SM8250, so only names and the mapped size differ.
- *
++ * TB321FU (kirby) UFS root device (read-only); ported from kebab (SM8250).
 + *
 + * The Qualcomm UFS host (UFSHCI 2.x/3.x legacy transfer list) must be left
 + * enabled, idle, with the link up and physical DMA addressing working by the

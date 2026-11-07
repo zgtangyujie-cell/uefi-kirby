@@ -53,15 +53,12 @@ def main():
     for old, new in REPLACEMENTS:
         text = text.replace(old, new)
 
-    # Keep the provenance visible in the new file's header.
+    # Keep the provenance visible without changing the file's line count: a
+    # hunk header says "+1,852", and adding or removing a line inside the hunk
+    # makes git report "corrupt patch" at the next diff --git line.
     text = text.replace(
         " * KIRBY internal UFS root device (read-only).",
-        " * TB321FU (kirby) internal UFS root device (read-only).\n"
-        " *\n"
-        " * Ported from UniXNU-kebab's bsd/dev/kebab_ufs.c (SM8250). The SM8650\n"
-        " * UFS controller sits at the same 0x01d84000/0x3000 window as SM8550 and\n"
-        " * SM8250, so only names and the mapped size differ.\n"
-        " *")
+        " * TB321FU (kirby) UFS root device (read-only); ported from kebab (SM8250).")
 
     # Strip any hunk that did not come from kebab's three files.
     TARGET.parent.mkdir(parents=True, exist_ok=True)
