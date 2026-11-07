@@ -89,6 +89,21 @@ jobs:
             exit $rc
           fi
 
+      - name: Report the result
+        if: always()
+        working-directory: devices/UniXNU
+        run: |
+          set +e
+          f=$(find out -name 'kernel.macho' -type f | head -1)
+          if [ -n "$f" ]; then
+            # Numbers only: UniXNU's workflow deliberately never publishes kernels
+            # or other Apple-derived binaries, and this repository is public.
+            echo "::notice title=kernel built::$f $(stat -f%z "$f") bytes sha256 $(shasum -a 256 "$f" | cut -c1-16)"
+            ls -l "$(dirname "$f")"
+          else
+            echo "::warning title=no kernel::out/ has no kernel.macho"
+          fi
+
       - name: Upload the text logs
         if: always()
         uses: actions/upload-artifact@v4
