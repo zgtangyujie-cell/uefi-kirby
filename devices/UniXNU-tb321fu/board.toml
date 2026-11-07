@@ -133,7 +133,15 @@ unixnu = "../UniXNU"
 # 先用官方模板的 REQUIRED_ 占位，不要猜。
 [payload.adt]
 chip_id = "207"
-owned_memory_size = "0x80000000"
+# 256 MiB, not caihong's 0x80000000.  DarwinBoot's AllocateWindow
+# (DarwinBoot.c:495-531) asks the UEFI memory map for ONE contiguous
+# EfiConventionalMemory run of at least this size and then AllocatePages at a
+# fixed address inside it.  Measured on this tablet: with 0x80000000 the boot
+# returned EFI_OUT_OF_RESOURCES before the kernel ever ran ('XNU' returned:
+# Out of Resources), because 2 GiB of contiguous free memory does not exist
+# under fastboot boot.  256 MiB is DarwinBoot's own default (WINDOW_SIZE =
+# SIZE_256MB in DarwinBoot.c:20) and leaves the ~70 MiB kernel ample room.
+owned_memory_size = "0x10000000"
 root_match_volume_uuid = "REQUIRED_ROOT_VOLUME_UUID"
 cpu_regs = "0"
 psci_method = "smc"
