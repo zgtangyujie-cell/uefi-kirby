@@ -113,7 +113,6 @@ APRIORI DXE {
   # it published read back as garbage (captured: jmp=02 bps=12343 spc=55).
   #
   INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
-  INF kirbyPkg/Drivers/KirbyInitrdDxe/KirbyInitrdDxe.inf
 
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/SdccDxe/SdccDxe.inf
@@ -226,6 +225,14 @@ APRIORI DXE {
 
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/RscDxe/RscDxe.inf
+
+  #
+  # Must run late: the firmware-volume protocol handles only appear once the
+  # FV driver has published them, and at the top of APRIORI the lookup came
+  # back empty -- no 'fv' line in the capture at all.  Nothing needs the
+  # payload before BDS runs its connect pass, so the tail is the right place.
+  #
+  INF kirbyPkg/Drivers/KirbyInitrdDxe/KirbyInitrdDxe.inf
 
   INF kirbyPkg/Drivers/QrLogDxe/QrLogDxe.inf
 }

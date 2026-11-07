@@ -490,11 +490,10 @@ FindEmbedded (
                   &Count,
                   &Handles
                   );
+  DEBUG ((DEBUG_ERROR, "KIRBYINITRD: fv %u %r\n", (UINT32)Count, Status));
   if (EFI_ERROR (Status)) {
     return Status;
   }
-
-  DEBUG ((DEBUG_ERROR, "KIRBYINITRD: fv %u\n", (UINT32)Count));
 
   for (Index = 0; Index < Count; Index++) {
     Status = gBS->HandleProtocol (Handles[Index], &mFirmwareVolume2Guid, (VOID **)&Fv);
