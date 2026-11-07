@@ -188,15 +188,6 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
     python3 "$ROOT/scripts/patch-pe-console.py" "$KERNEL_TMP" ||
       { log "PE_create_console patch failed; refusing to ship an unpatched kernel"; exit 1; }
     #
-    # PE_consistent_debug_inherit never returns on this board.  It looks up
-    # /chosen and then the 'consistent-debug-root' property, and the ADT has
-    # neither a value nor a property by that name, so both SecureDT calls
-    # should fail into the clean -1 path.  They do not.  Debug inheritance is
-    # optional: NOP the call and let arm_init continue to serial_init.
-    #
-    python3 "$ROOT/scripts/patch-debug-inherit.py" "$KERNEL_TMP" ||
-      { log "debug-inherit NOP failed"; exit 1; }
-    #
     # Official entry probe: stage code goes into the zero padding after `_start`
     # (which is a single `b`), displaced instructions are re-executed there.
     # It draws a blue bar once the kernel entry actually runs and a magenta bar
@@ -275,6 +266,18 @@ PY
       log "entry probe script missing at $ENTRY_PROBE; refusing to ship a kernel without colour bars"
       exit 1
     fi
+    #
+    # PE_consistent_debug_inherit never returns on this board.  It looks up
+    # /chosen and then the 'consistent-debug-root' property; our ADT has no
+    # such property, so both SecureDT calls should fall into the clean -1 path,
+    # yet the probe placed after this call never fires.
+    #
+    # This NOP must run AFTER the probe: the probe script verifies that
+    # _arm_init contains exactly one call to the symbol, and refuses to install
+    # once the call is gone.  Ordering it first failed build ba83ecb.
+    #
+    python3 "$ROOT/scripts/patch-debug-inherit.py" "$KERNEL_TMP" ||
+      { log "debug-inherit NOP failed"; exit 1; }
   fi
 else
   log "no kernel-out branch; the payload will carry the config only"
