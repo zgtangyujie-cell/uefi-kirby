@@ -28,6 +28,7 @@
 #include <Library/PcdLib.h>
 #include <Library/QrEncoderLib.h>
 #include <Library/UefiBootServicesTableLib.h>
+#include <Library/UefiRuntimeServicesTableLib.h>
 #include <Library/UefiLib.h>
 #include <Protocol/BlockIo.h>
 #include <Protocol/DiskIo.h>
@@ -555,9 +556,18 @@ QrLogDxeEntry (
   // hang, and the only way out was a power cycle.  Nothing here needs more than
   // a few minutes to be photographed.
   //
-  for (UINTN Round = 0; Round < 600; Round++) {
+  for (UINTN Round = 0; Round < 180; Round++) {
     gBS->Stall (1000000);
   }
+
+  //
+  // Hand the device back by itself.  Holding the panel forever meant every cycle
+  // ended with a long press on the power button; a cold reset boots Android,
+  // where the host script is already polling adb and issues 'adb reboot
+  // bootloader' on its own.  The whole loop then needs nothing but a photograph.
+  //
+  DEBUG ((DEBUG_ERROR, "QrLog: capture window over, resetting\n"));
+  gRT->ResetSystem (EfiResetCold, EFI_SUCCESS, 0, NULL);
 
   return EFI_SUCCESS;
 }
