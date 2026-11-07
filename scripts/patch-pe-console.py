@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
-"""Replace PE_create_console's first instruction with `ret`.
+"""Stop PE_create_console from reading the iBoot video console handoff.
 
-Why: on this board PE_create_console reads the iBoot video console handoff at
-PA 0x3C0FC000 before it ever looks at boot_args->Video.  Under `fastboot boot`
-that page was never initialised, so the load faults and the tablet resets right
-after DarwinEnter -- exactly the symptom we measured.
+On this board PE_create_console does:
 
-The instruction sequence is in the built kernel:
+    base  = ml_io_map_wcomb(0x3C0FC000, 0x4000);
+    magic = *(uint32_t *)base;          <-- 0x3C0FC000 is not mapped, faults
+    ...
+    bzero(base, 0x4000);
+    initialize_screen(...);             <-- tail call, sets up the framebuffer
 
-    mov  w0, #0xc000
-    movk w0, #0x3c0f, lsl #16     -> x0 = 0x3C0FC000
-    bl   ...
+0x3C0FC000 is the iBoot video console handoff; under `fastboot boot` that page
+was never set up, so the load faults and the tablet resets right after
+DarwinEnter.  A blunt `ret` at the top also skips initialize_screen, which is
+why the kernel then had no console output at all (measured on 6d7a741).
 
-UniXNU's elden device record measured the same thing and reports that replacing
-the first instruction with `ret` lets arm_init reach machine_startup.  This
-script finds the symbol through LC_SYMTAB, so it survives kernel rebuilds that
-move the address.
+So patch exactly two instructions and keep everything else:
+
+    +0x48  ldr w8, [x0]        -> mov w8, #0     (never dereference base)
+    +0x64  b.eq  <ok>          -> b   <ok>       (skip bzero of the bad page)
+
+ml_io_map_wcomb, the two PE_state stores and the trailing initialize_screen
+all still run.
 
 Usage: patch-pe-console.py <kernel.macho>
 """
@@ -24,8 +29,11 @@ import struct
 import sys
 from pathlib import Path
 
-RET = 0xD65F03C0
 SYMBOLS = ("_PE_create_console", "PE_create_console")
+PATCHES = (
+    (0x48, 0xB9400008, 0x52800008, "ldr w8,[x0] -> mov w8,#0"),
+    (0x64, 0x54000180, 0x1400000C, "b.eq -> b (skip bzero)"),
+)
 
 
 def segments(data):
@@ -74,19 +82,32 @@ def main():
 
     for vmaddr, filesize, fileoff in segments(data):
         if vmaddr <= value < vmaddr + filesize:
-            where = fileoff + (value - vmaddr)
+            base = fileoff + (value - vmaddr)
             break
     else:
         raise SystemExit(f"no segment covers {value:#x}")
 
-    old = struct.unpack_from("<I", data, where)[0]
-    if old == RET:
-        print(f"PE_create_console at {value:#x} is already ret")
-        return 0
+    changed = 0
+    for offset, expected, replacement, why in PATCHES:
+        where = base + offset
+        current = struct.unpack_from("<I", data, where)[0]
+        if current == replacement:
+            print(f"  +{offset:#04x} already patched ({why})")
+            continue
+        if current != expected:
+            raise SystemExit(
+                f"+{offset:#04x}: expected {expected:#010x}, found {current:#010x}; "
+                "kernel layout changed, refusing to patch blind"
+            )
+        struct.pack_into("<I", data, where, replacement)
+        print(f"  +{offset:#04x}: {expected:#010x} -> {replacement:#010x}  ({why})")
+        changed += 1
 
-    struct.pack_into("<I", data, where, RET)
-    path.write_bytes(data)
-    print(f"PE_create_console va {value:#x} file {where:#x}: {old:#010x} -> {RET:#010x}")
+    if changed:
+        path.write_bytes(data)
+        print(f"PE_create_console at {value:#x}: {changed} instruction(s) patched")
+    else:
+        print(f"PE_create_console at {value:#x}: nothing to do")
     return 0
 
 
