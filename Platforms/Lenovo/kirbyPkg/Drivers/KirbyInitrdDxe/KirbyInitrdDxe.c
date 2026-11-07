@@ -380,8 +380,8 @@ ReportRegions (
   UINTN  Pass;
 
   Shown = 0;
-  for (Pass = 0; (Pass < 2) && (Shown < 3); Pass++) {
-    for (At = 0; (At + DescriptorSize <= Size) && (Shown < 3); At += DescriptorSize) {
+  for (Pass = 0; (Pass < 2) && (Shown < 2); Pass++) {
+    for (At = 0; (At + DescriptorSize <= Size) && (Shown < 2); At += DescriptorSize) {
       EFI_MEMORY_DESCRIPTOR  *Entry = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + At);
       UINT64                 Bytes = EFI_PAGES_TO_SIZE (Entry->NumberOfPages);
 
@@ -413,6 +413,70 @@ ReportRegions (
       Shown++;
     }
   }
+}
+
+/**
+  Sweep the two reserved blocks that sit next to the kernel.
+
+  The memory map shows three reserved blocks big enough to hold the payload:
+  0x80000000 (18 MiB), 0x82600000 (36 MiB) and 0xD4E23000 (46 MiB).  A
+  bootloader parks kernel and ramdisk in the first two, so walk them at 2 MiB
+  steps -- the bootloader aligns a ramdisk to at least that -- and check the
+  volume label wherever a candidate lands.  The third block stays untouched: it
+  is far from the kernel and is the most likely home of the range that aborted
+  the build which scanned every region type.
+
+  This doubles as the answer to a different question: if the head of neither
+  block is a FAT boot sector and nothing inside them matches, the bootloader
+  never loaded the ramdisk at all, and no amount of searching will find it.
+**/
+STATIC
+EFI_STATUS
+ProbeReserved (
+  IN EFI_MEMORY_DESCRIPTOR  *Map,
+  IN UINTN                  Size,
+  IN UINTN                  DescriptorSize
+  )
+{
+  UINTN   At;
+  UINTN   Probes;
+  UINT8   *Head;
+  UINT64  Bytes;
+  UINT64  Offset;
+  UINT64  Found;
+
+  Probes = 0;
+  for (At = 0; (At + DescriptorSize <= Size) && (Probes < 2); At += DescriptorSize) {
+    EFI_MEMORY_DESCRIPTOR  *Entry = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + At);
+
+    if (Entry->Type != EfiReservedMemoryType) {
+      continue;
+    }
+
+    Bytes = EFI_PAGES_TO_SIZE (Entry->NumberOfPages);
+    if ((Bytes < SCAN_MIN_REGION) || (Entry->PhysicalStart >= 0x90000000ULL)) {
+      continue;
+    }
+
+    Head = (UINT8 *)(UINTN)Entry->PhysicalStart;
+    DEBUG ((
+      DEBUG_ERROR,
+      "KIRBYINITRD: p 0x%lx %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x\n",
+      Entry->PhysicalStart,
+      Head[0], Head[1], Head[2], Head[3], Head[4], Head[5], Head[6], Head[7],
+      Head[8], Head[9], Head[10], Head[11], Head[12], Head[13], Head[14], Head[15]
+      ));
+    Probes++;
+
+    for (Offset = 0; Offset + RAM_BLOCK_SIZE <= Bytes; Offset += 2 * 1024 * 1024) {
+      Found = VolumeSizeAt ((UINT8 *)(UINTN)(Entry->PhysicalStart + Offset), Bytes - Offset);
+      if (Found != 0) {
+        return InstallVolume (Entry->PhysicalStart + Offset, Found);
+      }
+    }
+  }
+
+  return EFI_NOT_FOUND;
 }
 
 STATIC
@@ -451,6 +515,12 @@ ScanMemoryMap (
   }
 
   ReportRegions (Map, Size, DescriptorSize);
+
+  if (!EFI_ERROR (ProbeReserved (Map, Size, DescriptorSize))) {
+    FreePool (Map);
+    return EFI_SUCCESS;
+  }
+
   Status = ScanMemory (Map, Size, DescriptorSize);
   FreePool (Map);
   return Status;
@@ -470,7 +540,6 @@ KirbyInitrdDxeEntry (
   INT32              Chosen;
   INT32              StartLength;
   INT32              EndLength;
-  CONST UINT8        *Head;
   UINT64             Dtb;
   UINT64             Start;
   UINT64             End;
@@ -501,24 +570,6 @@ KirbyInitrdDxeEntry (
         Start = ReadAddress (StartProp, StartLength);
         End   = ReadAddress (EndProp, EndLength);
         DEBUG ((DEBUG_ERROR, "KIRBYINITRD: fdt range 0x%lx-0x%lx\n", Start, End));
-
-        //
-        // Show what the bootloader actually left at that address.  The range
-        // does not start with a FAT boot sector, so the question is whether the
-        // address is stale or the payload never loaded at all -- a compressed
-        // image, another filesystem and plain garbage each point somewhere
-        // different.  Only dump inside the DRAM window: MMIO does not answer
-        // reads, it aborts.
-        //
-        if ((Start >= 0x40000000ULL) && (Start < 0x100000000ULL) && ((Start & 7) == 0)) {
-          Head = (CONST UINT8 *)(UINTN)Start;
-          DEBUG ((
-            DEBUG_ERROR,
-            "KIRBYINITRD: head %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x\n",
-            Head[0], Head[1], Head[2], Head[3], Head[4], Head[5], Head[6], Head[7],
-            Head[8], Head[9], Head[10], Head[11], Head[12], Head[13], Head[14], Head[15]
-            ));
-        }
 
         if (!EFI_ERROR (FindVolume (Start, End))) {
           return EFI_SUCCESS;
