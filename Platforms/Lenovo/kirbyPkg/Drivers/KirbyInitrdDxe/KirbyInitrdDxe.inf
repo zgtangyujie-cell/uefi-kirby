@@ -19,6 +19,7 @@
 
 [Sources]
   KirbyInitrdDxe.c
+  PayloadBlob.c
 
 [Packages]
   MdePkg/MdePkg.dec
