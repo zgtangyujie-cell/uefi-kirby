@@ -210,7 +210,15 @@
   # APRIORI.inc -- APRIORI only accepts drivers.
   #
   MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
-  UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf
+  #
+  # UniXNUPkg's UniXNURamDiskDxe is deliberately NOT used.  It treats
+  # /chosen/linux,initrd-start as the first byte of the payload, and on this
+  # boot path that property still holds the previous Android boot's range, so
+  # the block device it publishes reads back as garbage.  KirbyInitrdDxe scans
+  # for the volume label instead; it is the same approach UniXNU-caihong uses on
+  # the same SoC family.
+  #
+  kirbyPkg/Drivers/KirbyInitrdDxe/KirbyInitrdDxe.inf
   UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
   UniXNUPkg/Application/UniXNU/UniXNU.inf
   DarwinBootPkg/Driver/DarwinBoot.inf

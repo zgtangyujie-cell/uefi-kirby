@@ -103,12 +103,17 @@ APRIORI DXE {
 
   #
   # UniXNU payload chain, dependency order matters here:
-  #   UniXNURamDiskDxe turns the Mu FDT handover (/chosen/linux,initrd-start and
-  #     linux,initrd-end) into a read-only block device,
+  #   KirbyInitrdDxe finds the payload's FAT16 volume by its label and
+  #     publishes it as a read-only block device,
   #   DiskIoDxe gives every filesystem driver block access to it.
   #
+  # UniXNUPkg's UniXNURamDiskDxe was replaced: it trusts
+  # /chosen/linux,initrd-start as the volume start, but on this boot path that
+  # property still describes the previous Android boot's ramdisk, so the device
+  # it published read back as garbage (captured: jmp=02 bps=12343 spc=55).
+  #
   INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
-  INF UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf
+  INF kirbyPkg/Drivers/KirbyInitrdDxe/KirbyInitrdDxe.inf
 
   # bring-up: 先摘掉厂商驱动（SMEM 无效导致整条链都不稳），稍后按依赖顺序加回
   # INF Binaries/kirby/QcomPkg/Drivers/SdccDxe/SdccDxe.inf

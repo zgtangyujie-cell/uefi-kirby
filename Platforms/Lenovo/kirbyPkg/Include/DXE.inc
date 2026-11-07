@@ -63,12 +63,18 @@
   # UniXNU required integration
   # (unixnu.com/zh/porting/uefi-firmware#required-integration).
   # FV order does not decide dispatch -- DxeCore uses the depex plus
-  # APRIORI.inc -- but keep the payload chain readable: UniXNURamDiskDxe
-  # publishes the initrd block device, DiskIoDxe wraps it, Fat publishes the
+  # APRIORI.inc -- but keep the payload chain readable: KirbyInitrdDxe
+  # publishes the payload volume, DiskIoDxe wraps it, Fat publishes the
   # volume UniXNU reads \EFI\UniXNU\unixnu.toml from.
   #
+  # kirbyPkg's KirbyInitrdDxe replaces UniXNUPkg/Driver/UniXNURamDiskDxe here.
+  # That driver reads the volume from /chosen/linux,initrd-start, but on this
+  # boot path the property still holds the previous Android boot's ramdisk
+  # range, so the block device it published returned garbage ("jmp=02
+  # bps=12343 spc=55") and Fat never produced a SimpleFileSystem.
+  #
   INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
-  INF UniXNUPkg/Driver/UniXNURamDiskDxe/UniXNURamDiskDxe.inf
+  INF kirbyPkg/Drivers/KirbyInitrdDxe/KirbyInitrdDxe.inf
   INF UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
   INF UniXNUPkg/Application/UniXNU/UniXNU.inf
   INF DarwinBootPkg/Driver/DarwinBoot.inf

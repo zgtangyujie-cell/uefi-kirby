@@ -1,0 +1,42 @@
+## @file
+#  Publishes the UniXNU payload as a read-only block device.
+#
+#  Replaces UniXNUPkg/Driver/UniXNURamDiskDxe, which trusts
+#  /chosen/linux,initrd-start as the first byte of the volume.  On kirby the
+#  bootloader hands over the previous Android boot's initrd range, so that
+#  address reads back as garbage and Fat refuses the volume.
+#
+#  Copyright (c) 2026, kirby bring-up. SPDX-License-Identifier: BSD-2-Clause-Patent
+##
+
+[Defines]
+  INF_VERSION    = 0x00010019
+  BASE_NAME      = KirbyInitrdDxe
+  FILE_GUID      = 5E3C2A91-7B48-4F16-8D2C-6A91F405BB37
+  MODULE_TYPE    = DXE_DRIVER
+  VERSION_STRING = 0.1
+  ENTRY_POINT    = KirbyInitrdDxeEntry
+
+[Sources]
+  KirbyInitrdDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  BaseLib
+  BaseMemoryLib
+  DebugLib
+  FdtLib
+  HobLib
+  MemoryAllocationLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+
+[Protocols]
+  gEfiBlockIoProtocolGuid     ## PRODUCES
+  gEfiDevicePathProtocolGuid  ## PRODUCES
+
+[Depex]
+  TRUE
