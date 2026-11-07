@@ -248,7 +248,7 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       # reset moves ~24 s later, a panic restart does not move at all.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _IOFindBSDRoot --in _bsd_init \
+        --reset-after _vfs_mountroot --in _bsd_init \
         --reset-delay 30 ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
