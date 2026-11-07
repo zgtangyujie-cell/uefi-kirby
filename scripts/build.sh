@@ -220,18 +220,21 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       echo "PROBE: llvm-nm=$(command -v llvm-nm || echo MISSING) clang=$(command -v clang || echo MISSING)"
       #
       # Progress so far, each step measured without a screen:
-      #   c5d38a4  --reset-delay 6                          CPU got through the MMU
-      #   d1a26d7  after _PE_init_platform in _arm_init     1st call returned
-      #   dc76c75  before _machine_startup in _arm_init     NO reset
+      #   c5d38a4  --reset-delay 6                       CPU got through the MMU
+      #   d1a26d7  after _PE_init_platform (1st call)     returned
+      #   dc76c75  before _machine_startup                NO reset
+      #   fceb11f  after _PE_create_console               NO reset
       #
-      # dc76c75's miss narrows the death to the 20-odd calls between the first
-      # PE_init_platform and machine_startup (full list in CHANNEL #181).  The
-      # two most suspicious are serial_init/switch_to_serial_console (no UART
-      # on this board) and PE_create_console (which we patch).  Test the later
-      # one first: if PE_create_console returns, the hook moves past it.
+      # c5d38a4 says arm_vm_init ran; fceb11f says PE_create_console was never
+      # reached.  Between them sit eight calls only:
+      #   patch_low_glo, PE_consistent_debug_inherit, serial_init,
+      #   kernel_startup_initialize_upto, kprintf, serial_set_on_demand,
+      #   kern_feature_override, switch_to_serial_console
+      # serial_init is the prime suspect: this board has no physical UART, so
+      # probing a missing controller is exactly the kind of thing that spins.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _PE_create_console --in _arm_init ||
+        --reset-after _serial_init --in _arm_init ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
