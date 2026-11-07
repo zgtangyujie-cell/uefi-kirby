@@ -188,6 +188,15 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
     python3 "$ROOT/scripts/patch-pe-console.py" "$KERNEL_TMP" ||
       { log "PE_create_console patch failed; refusing to ship an unpatched kernel"; exit 1; }
     #
+    # PE_consistent_debug_inherit never returns on this board.  It looks up
+    # /chosen and then the 'consistent-debug-root' property, and the ADT has
+    # neither a value nor a property by that name, so both SecureDT calls
+    # should fail into the clean -1 path.  They do not.  Debug inheritance is
+    # optional: NOP the call and let arm_init continue to serial_init.
+    #
+    python3 "$ROOT/scripts/patch-debug-inherit.py" "$KERNEL_TMP" ||
+      { log "debug-inherit NOP failed"; exit 1; }
+    #
     # Official entry probe: stage code goes into the zero padding after `_start`
     # (which is a single `b`), displaced instructions are re-executed there.
     # It draws a blue bar once the kernel entry actually runs and a magenta bar
