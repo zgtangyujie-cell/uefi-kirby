@@ -229,14 +229,18 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       # 78067bf is the important one: serial_init was never reached, so the
       # death is between arm_vm_init returning and that call.  Only two calls
       # live there:
-      #   0x79b3c70  patch_low_glo
-      #   0x79b3c74  PE_consistent_debug_inherit
+      #   0x79b3c70  patch_low_glo                 (guarded by cbz w8, may not run)
+      #   0x79b3c74  PE_consistent_debug_inherit   (unconditional)
       #   0x79b3c78  serial_init
-      # Test patch_low_glo first; a reset means it returns and the suspect is
-      # PE_consistent_debug_inherit.
+      #
+      # The patch_low_glo round proved the method has a hole: it is called only
+      # when the flag at 0x715c518 is non-zero (cbz at 0x79b3c6c), so a missing
+      # reset could mean "not called" rather than "died before it".
+      # PE_consistent_debug_inherit is an unconditional bl, so the signal is
+      # unambiguous this time.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _patch_low_glo --in _arm_init ||
+        --reset-after _PE_consistent_debug_inherit --in _arm_init ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
