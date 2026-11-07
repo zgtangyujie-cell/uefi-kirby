@@ -494,6 +494,8 @@ FindEmbedded (
     return Status;
   }
 
+  DEBUG ((DEBUG_ERROR, "KIRBYINITRD: fv %u\n", (UINT32)Count));
+
   for (Index = 0; Index < Count; Index++) {
     Status = gBS->HandleProtocol (Handles[Index], &mFirmwareVolume2Guid, (VOID **)&Fv);
     if (EFI_ERROR (Status)) {
@@ -511,6 +513,16 @@ FindEmbedded (
                        &BufferSize,
                        &AuthenticationStatus
                        );
+    if (Index < 2) {
+      DEBUG ((
+        DEBUG_ERROR,
+        "KIRBYINITRD: fv%u %r size %u\n",
+        (UINT32)Index,
+        Status,
+        (UINT32)BufferSize
+        ));
+    }
+
     if (EFI_ERROR (Status) || (Buffer == NULL)) {
       continue;
     }
