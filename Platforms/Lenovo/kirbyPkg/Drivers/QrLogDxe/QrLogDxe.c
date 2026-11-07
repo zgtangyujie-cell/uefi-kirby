@@ -544,15 +544,13 @@ QrLogDxeEntry (
     );
 
   //
-  // Hold the panel for a capture.  UniXNU still reports 'built-in
-  // configuration' although Fat mounted the volume (fs=1), so the question is
-  // now whether the file can be opened through the SimpleFileSystem API at
-  // all -- which is exactly what UniXNU does.  Remove this loop once the
-  // capture explains it.
+  // Hand the panel back to BDS.  The payload chain is complete and measured:/n  //   KIRBYINITRD: volume at 0x... size 0x2000 Success
+  //   QrLog: pcd2=1 blkio=1 diskio=1 fs=1 uc1=0 uc2=1
+  //   QrLog: toml lo=Success up=Success
+  // The last line is the one that mattered: Fat matched the mixed-case long
+  // path only after the volume carried VFAT long-name entries, so UniXNU can
+  // now read \EFI\UniXNU\unixnu.toml instead of falling back to its built-in
+  // configuration.  Restore this hold only when another capture is needed.
   //
-  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
-    gBS->Stall (1000000);
-  }
-
   return EFI_SUCCESS;
 }
