@@ -135,6 +135,25 @@ git -C Silicon/Silicium diff --stat
 log "installing the kirby device package"
 cp -r "$ROOT/Platforms/Lenovo/kirbyPkg" Platforms/Lenovo/
 cp    "$ROOT/Resources/Configs/kirby.toml" Resources/Configs/
+
+#
+# Build the UniXNU payload volume.
+#
+# 8 MiB FAT16, one file: EFI/UniXNU/unixnu.toml.  FAT16 rather than the FAT12
+# the driver compiles in, because this copy rides in the kernel section and has
+# room; 8 MiB is the largest the ramdisk window would ever allow and costs
+# nothing here.
+#
+# The names carry VFAT long-file entries with the exact case UniXNU asks for.
+# mkpayload.py used to skip the long entry whenever the upper-cased name matched
+# the 8.3 spelling, so "UniXNU" was stored as plain "UNIXNU" -- and this
+# firmware's Fat does not fold case (measured: `toml lo=Not Found up=Success`).
+#
+log "building the payload volume"
+python3 "$ROOT/scripts/mkpayload.py" \
+  --output Platforms/Lenovo/kirbyPkg/Resources/payload.bin \
+  --size-mib 8 --cluster-sectors 2 --label TB321FUESP \
+  --add "EFI/UniXNU/unixnu.toml=Platforms/Lenovo/kirbyPkg/Resources/payload-tree/EFI/UniXNU/unixnu.toml"
 #
 # UniXNU payload.  build_uefi.py:331 passes "--ramdisk Resources/ramdisk" to
 # mkbootimg, so this file becomes the boot image's ramdisk field.  On a GKI

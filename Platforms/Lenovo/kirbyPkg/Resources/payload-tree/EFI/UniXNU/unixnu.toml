@@ -1,0 +1,27 @@
+version = 1
+
+#
+# Minimal payload for the kirby bring-up.
+#
+# It does not boot anything yet.  Its only job is to prove the chain
+#   ramdisk -> UniXNURamDiskDxe -> DiskIoDxe -> Fat -> UniXNU
+# works: if UniXNU shows this title and this entry instead of
+# "built-in configuration", then the payload volume was found and read.
+#
+# The single entry deliberately points at a file that does not exist, so
+# selecting it must fail with "not found".  That failure is the success
+# signal here -- the point is the menu content, not the boot.
+#
+[boot]
+timeout = 10
+default = "probe"
+
+[ui]
+title = "Kirby Probe"
+
+[[entry]]
+id = "probe"
+title = "Payload found"
+type = "efi"
+path = "Payloads/missing.efi"
+enabled = true
