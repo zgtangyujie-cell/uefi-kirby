@@ -15,7 +15,7 @@ new file mode 100644
 index 0000000..1d66736
 --- /dev/null
 +++ b/bsd/dev/kirby_ufs.c
-@@ -0,0 +1,852 @@
+@@ -0,0 +1,873 @@
 +/*
 + * TB321FU (kirby) UFS root device (read-only); ported from kebab (SM8250).
 + *
@@ -738,8 +738,29 @@ index 0000000..1d66736
 +	}
 +	/* ADT properties are only 4-byte aligned: copy the two LE uint64_t cells. */
 +	memcpy(reg, prop, sizeof(reg));
++	/*
++	 * reg arrives relative to the arm-io base, not absolute: devicetree.py
++	 * stores (physical - arm_io_window base), and that base is the lowest
++	 * exported register window rounded down to 16 MiB.  Measured here:
++	 * /kirby-ufs = 0xd84000, base = 0x1000000, so 0x1d84000 is the address
++	 * to map.  /arm-io's reg carries that base as its first LE uint64.
++	 */
++	if (reg[0] != UFS_MMIO_BASE) {
++		DTEntry io;
++		const void *ioProp = NULL;
++		unsigned int ioSize = 0;
++		uint64_t base = 0;
++		if (SecureDTLookupEntry(NULL, "/arm-io", &io) == kSuccess &&
++		    SecureDTGetProperty(io, "reg", &ioProp, &ioSize) == kSuccess &&
++		    ioSize >= sizeof(base)) {
++			memcpy(&base, ioProp, sizeof(base));
++		}
++		if (base && reg[0] + base == UFS_MMIO_BASE) {
++			reg[0] += base;
++		}
++	}
 +	if (reg[0] != UFS_MMIO_BASE || reg[1] < UFS_MMIO_SIZE) {
-+		printf("KIRBY UFS: invalid absolute /kirby-ufs reg\n");
++		printf("KIRBY UFS: invalid /kirby-ufs reg %llx %llx\n", reg[0], reg[1]);
 +		return ENXIO;
 +	}
 +	PE_parse_boot_argn("ufsroot", want, sizeof(want));

@@ -36,6 +36,72 @@ REPLACEMENTS = [
     ("kebab", "kirby"),
 ]
 
+# kebab validates the ADT reg against an absolute address.  UniXNU's
+# devicetree.py does not write absolute addresses: hardware_properties()
+# stores (physical(address) - arm_io_window.base), where base is the lowest
+# exported register window rounded down to 16 MiB.  On this board /kirby-ufs
+# therefore arrives as 0x00d84000 with base 0x01000000, and 0x01d84000 never
+# appears in the ADT at all (checked byte-wise against the built sidecar).
+# Recover the base from /arm-io's own reg, whose first cell is that base.
+OLD_REG_CHECK = (
+    '+\tif (reg[0] != UFS_MMIO_BASE || reg[1] < UFS_MMIO_SIZE) {\n'
+    '+\t\tprintf("KIRBY UFS: invalid absolute /kirby-ufs reg\\n");\n'
+    '+\t\treturn ENXIO;\n'
+    '+\t}\n'
+)
+
+NEW_REG_CHECK = (
+    '+\t/*\n'
+    '+\t * reg arrives relative to the arm-io base, not absolute: devicetree.py\n'
+    '+\t * stores (physical - arm_io_window base), and that base is the lowest\n'
+    '+\t * exported register window rounded down to 16 MiB.  Measured here:\n'
+    '+\t * /kirby-ufs = 0xd84000, base = 0x1000000, so 0x1d84000 is the address\n'
+    '+\t * to map.  /arm-io\'s reg carries that base as its first LE uint64.\n'
+    '+\t */\n'
+    '+\tif (reg[0] != UFS_MMIO_BASE) {\n'
+    '+\t\tDTEntry io;\n'
+    '+\t\tconst void *ioProp = NULL;\n'
+    '+\t\tunsigned int ioSize = 0;\n'
+    '+\t\tuint64_t base = 0;\n'
+    '+\t\tif (SecureDTLookupEntry(NULL, "/arm-io", &io) == kSuccess &&\n'
+    '+\t\t    SecureDTGetProperty(io, "reg", &ioProp, &ioSize) == kSuccess &&\n'
+    '+\t\t    ioSize >= sizeof(base)) {\n'
+    '+\t\t\tmemcpy(&base, ioProp, sizeof(base));\n'
+    '+\t\t}\n'
+    '+\t\tif (base && reg[0] + base == UFS_MMIO_BASE) {\n'
+    '+\t\t\treg[0] += base;\n'
+    '+\t\t}\n'
+    '+\t}\n'
+    '+\tif (reg[0] != UFS_MMIO_BASE || reg[1] < UFS_MMIO_SIZE) {\n'
+    '+\t\tprintf("KIRBY UFS: invalid /kirby-ufs reg %llx %llx\\n", reg[0], reg[1]);\n'
+    '+\t\treturn ENXIO;\n'
+    '+\t}\n'
+)
+
+
+def fix_new_file_hunk(text):
+    """Replace the reg check and correct the new file's hunk length.
+
+    git apply counts the lines inside a hunk and rejects a mismatch as
+    "corrupt patch", so any edit that changes the line count has to update the
+    @@ -0,0 +1,N @@ header too.
+    """
+    if OLD_REG_CHECK not in text:
+        raise SystemExit("the reg-check block to replace was not found")
+    text = text.replace(OLD_REG_CHECK, NEW_REG_CHECK)
+
+    lines = text.splitlines(keepends=True)
+    start = next(i for i, line in enumerate(lines)
+                 if line.startswith("+++ b/bsd/dev/kirby_ufs.c"))
+    header = start + 1
+    if not lines[header].startswith("@@"):
+        raise SystemExit("expected a hunk header after +++")
+    end = next(i for i, line in enumerate(lines)
+               if i > header and line.startswith("diff --git"))
+    count = sum(1 for line in lines[header + 1:end] if line.startswith("+"))
+    lines[header] = "@@ -0,0 +1,%d @@\n" % count
+    return "".join(lines)
+
 
 def main():
     if not SOURCE.is_file():
@@ -52,6 +118,10 @@ def main():
 
     for old, new in REPLACEMENTS:
         text = text.replace(old, new)
+
+    # Must run after the rename pass, because the block it looks for already
+    # carries the KIRBY spelling.
+    text = fix_new_file_hunk(text)
 
     # Keep the provenance visible without changing the file's line count: a
     # hunk header says "+1,852", and adding or removing a line inside the hunk
