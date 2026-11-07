@@ -224,17 +224,19 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       #   d1a26d7  after _PE_init_platform (1st call)     returned
       #   dc76c75  before _machine_startup                NO reset
       #   fceb11f  after _PE_create_console               NO reset
+      #  78067bf  after _serial_init                      NO reset
       #
-      # c5d38a4 says arm_vm_init ran; fceb11f says PE_create_console was never
-      # reached.  Between them sit eight calls only:
-      #   patch_low_glo, PE_consistent_debug_inherit, serial_init,
-      #   kernel_startup_initialize_upto, kprintf, serial_set_on_demand,
-      #   kern_feature_override, switch_to_serial_console
-      # serial_init is the prime suspect: this board has no physical UART, so
-      # probing a missing controller is exactly the kind of thing that spins.
+      # 78067bf is the important one: serial_init was never reached, so the
+      # death is between arm_vm_init returning and that call.  Only two calls
+      # live there:
+      #   0x79b3c70  patch_low_glo
+      #   0x79b3c74  PE_consistent_debug_inherit
+      #   0x79b3c78  serial_init
+      # Test patch_low_glo first; a reset means it returns and the suspect is
+      # PE_consistent_debug_inherit.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _serial_init --in _arm_init ||
+        --reset-after _patch_low_glo --in _arm_init ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
