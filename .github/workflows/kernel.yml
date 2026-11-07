@@ -91,14 +91,17 @@ jobs:
             echo "== fetch"
             python3.12 unixnu fetch
             echo "== build"
-            # --skip-prelink: copy the built native kernel without adding the
-            # kernelcache kexts.  The prelinked image spans 65 MiB, which does
-            # not fit the only window this tablet can allocate (256 MiB, since
-            # 1 GiB returns Out of Resources), and arm_vm_init's early page
-            # tables have to live in that same window.  Dropping the 19.5 MiB
-            # __PLK_TEXT_EXEC and the prelink metadata shrinks the span a lot
-            # and tests whether the window is the real blocker.
-            python3.12 unixnu build kernel --skip-prelink
+            # No --skip-prelink any more.  The earlier reason was size: the
+            # prelinked image spans 65 MiB and the only window this tablet can
+            # allocate is 256 MiB (1 GiB returns Out of Resources), and
+            # arm_vm_init's early page tables live in that same window.  That
+            # was a judgement, not a measurement, and it costs us APFS: with
+            # --skip-prelink the kernel has no __PRELINK_* content at all, so
+            # there is nothing that can mount the APFS container that userdata
+            # is supposed to carry.  65 MiB plus page tables should still fit
+            # in 256 MiB, and if it does not, the hand-off prints
+            # "Out of Resources", which is the cleanest possible answer.
+            python3.12 unixnu build kernel
           } > /tmp/build.log 2>&1
           rc=$?
           tail -60 /tmp/build.log

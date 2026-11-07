@@ -81,6 +81,38 @@ archives = [
   "build-libpthread-kernel.py",
 ]
 
+# prelink：从 IPSW 的 kernelcache 里把 kext 链进内核。
+#
+# 为什么必须有它：这台机器一直用 --skip-prelink 构建，所以
+# __PRELINK_TEXT / __PRELINK_INFO / __PRELINK_DATA 全是 0，内核里
+# **没有任何 APFS 代码**。userdata 里放的是 APFS 容器，没有 APFS 实现
+# 就没有任何东西能把它解析成卷 —— 写进去也挂不上。
+#
+# 参照 caihong（SM8650，能跑到 launchd）：它的 [kernel.prelink] 里
+# apfs 和 IOStorageFamily 都在 roots 里。它的 tool 写的是
+# kits/NativePrelink/emit_prelink.py，那是旧名，现在是 XnuPrelink
+# （components.toml 里 kind="kit", path="kits/XnuPrelink"，
+#  tree.py 会把它链接成 <tree>/kits/XnuPrelink）。
+#
+# roots 先只放挂根卷最小必需的一组：APFS 本体、存储栈基类、压缩、crypto、
+# 信任链。caihong 那 31 项里还有 ApplePMGR / IOAVFamily / IOGPUFamily 等，
+# 那些依赖我们没有的硬件或组件，缺 kext 时 emit_prelink 会直接报错。
+# 先跑通最小集，缺什么再按报错补。
+[kernel.prelink]
+tool = "kits/XnuPrelink/emit_prelink.py"
+kernel = "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf"
+slide = "-0x1000000"
+roots = [
+  "com.apple.filesystems.apfs",
+  "com.apple.iokit.IOStorageFamily",
+  "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib",
+  "com.apple.kec.corecrypto",
+  "com.apple.kec.Libm",
+  "com.apple.kext.CoreTrust",
+  "com.apple.security.AppleImage4",
+  "com.apple.security.sandbox",
+]
+
 [device_tree]
 source = "device:dts/tb321fu.dts"
 include_dirs = ["soc:dts"]
