@@ -61,13 +61,22 @@ STATIC CONST EFI_GUID  mEntryArgHobGuid = {
 #define SCAN_MIN_REGION  (8ULL * 1024 * 1024)
 
 //
-// The window MemoryMapLib calls "Kernel": 0xA8000000 + 0x10000000, Reserved and
-// mapped read-write by our own page tables.  Everything ABL loads for the boot
-// image lands here -- the cpio archive the device tree points at (0xB755F000)
-// sits inside it and reads fine.  It is the only large region that is *proved*
-// mapped: the earlier attempt to scan the UEFI memory map died at 0x80000000,
-// which MemoryMapLib does not map at all, so that abort was a translation fault
-// and told us nothing about whether the ramdisk had been loaded.
+// The window MemoryMapLib calls "Kernel": 0xA8000000 + 0x10000000, ordinary
+// system memory, mapped read-write.  Everything ABL loads for the boot image
+// lands here -- the cpio archive the device tree points at (0xB755F000) sits
+// inside it and reads fine.
+//
+// Measured result: it holds no payload.  With the 440 MB of conventional memory
+// also swept and the device tree's initrd range pointing at an Android cpio
+// archive, three independent observations now say the bootloader never loaded
+// the ramdisk this build passes it.
+//
+// Note for whoever reads the earlier attempt: 0x80000000 IS mapped -- it is the
+// table's first entry, "HYP" (18 MiB, uncached, reserved).  That scan aborted
+// because it crossed from HYP's end (0x81200000) into the 8 MiB hole before
+// XBL_DT at 0x81A00000, which is a translation fault *at the hole*, not at the
+// first byte.  An earlier commit message claimed 0x80000000 was unmapped; it was
+// wrong, and that mistake is what made this window look untested.
 //
 #define KERNEL_WINDOW_BASE  0xA8000000ULL
 #define KERNEL_WINDOW_SIZE  0x10000000ULL
