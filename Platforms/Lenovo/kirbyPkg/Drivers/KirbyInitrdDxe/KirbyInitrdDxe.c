@@ -57,7 +57,7 @@ STATIC CONST EFI_GUID  mEntryArgHobGuid = {
 // A region has to be at least this big before the memory scan bothers with it;
 // the payload is 8 MiB and nothing smaller can hold it.
 //
-#define SCAN_MIN_REGION  (16ULL * 1024 * 1024)
+#define SCAN_MIN_REGION  (8ULL * 1024 * 1024)
 
 //
 // Must match payload.img, which work/make_payload.py builds with
@@ -301,18 +301,26 @@ ScanMemory (
   UINT64               Address;
   UINT64               Bytes;
   UINTN                Regions;
+  UINT64               Scanned;
 
   Regions = 0;
+  Scanned = 0;
 
   for (Step = 0; Step < ARRAY_SIZE (Steps); Step++) {
     for (At = 0; At + DescriptorSize <= Size; At += DescriptorSize) {
       EFI_MEMORY_DESCRIPTOR  *Entry = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)Map + At);
 
-      if ((Entry->Type != EfiConventionalMemory) &&
-          (Entry->Type != EfiBootServicesData) &&
-          (Entry->Type != EfiLoaderData) &&
-          (Entry->Type != EfiLoaderCode) &&
-          (Entry->Type != EfiACPIReclaimMemory))
+      //
+      // Every region type is fair game except the ones that are not memory.
+      // The first version copied caihong's "conventional memory only" filter
+      // and found a single candidate region: the bootloader marks the pages it
+      // loaded the ramdisk into as EfiReservedMemoryType, so that filter
+      // skipped exactly the place the payload had to be.  MMIO and PAL code
+      // stay off limits -- dereferencing those is a data abort, not a read.
+      //
+      if ((Entry->Type == EfiMemoryMappedIO) ||
+          (Entry->Type == EfiMemoryMappedIOPortSpace) ||
+          (Entry->Type == EfiPalCode))
       {
         continue;
       }
@@ -325,6 +333,7 @@ ScanMemory (
 
       if (Step == 0) {
         Regions++;
+        Scanned += End - Start;
       }
 
       for (Address = ALIGN_VALUE (Start, Steps[Step]); Address + RAM_BLOCK_SIZE <= End; Address += Steps[Step]) {
@@ -336,7 +345,12 @@ ScanMemory (
     }
   }
 
-  DEBUG ((DEBUG_ERROR, "KIRBYINITRD: no volume, %u candidate regions\n", (UINT32)Regions));
+  DEBUG ((
+    DEBUG_ERROR,
+    "KIRBYINITRD: none, %u regs, %u MB scanned\n",
+    (UINT32)Regions,
+    (UINT32)(Scanned / (1024 * 1024))
+    ));
   return EFI_NOT_FOUND;
 }
 
@@ -394,6 +408,7 @@ KirbyInitrdDxeEntry (
   INT32              Chosen;
   INT32              StartLength;
   INT32              EndLength;
+  CONST UINT8        *Head;
   UINT64             Dtb;
   UINT64             Start;
   UINT64             End;
@@ -424,6 +439,25 @@ KirbyInitrdDxeEntry (
         Start = ReadAddress (StartProp, StartLength);
         End   = ReadAddress (EndProp, EndLength);
         DEBUG ((DEBUG_ERROR, "KIRBYINITRD: fdt range 0x%lx-0x%lx\n", Start, End));
+
+        //
+        // Show what the bootloader actually left at that address.  The range
+        // does not start with a FAT boot sector, so the question is whether the
+        // address is stale or the payload never loaded at all -- a compressed
+        // image, another filesystem and plain garbage each point somewhere
+        // different.  Only dump inside the DRAM window: MMIO does not answer
+        // reads, it aborts.
+        //
+        if ((Start >= 0x40000000ULL) && (Start < 0x100000000ULL) && ((Start & 7) == 0)) {
+          Head = (CONST UINT8 *)(UINTN)Start;
+          DEBUG ((
+            DEBUG_ERROR,
+            "KIRBYINITRD: head %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x\n",
+            Head[0], Head[1], Head[2], Head[3], Head[4], Head[5], Head[6], Head[7],
+            Head[8], Head[9], Head[10], Head[11], Head[12], Head[13], Head[14], Head[15]
+            ));
+        }
+
         if (!EFI_ERROR (FindVolume (Start, End))) {
           return EFI_SUCCESS;
         }
