@@ -62,11 +62,21 @@ jobs:
             {
               echo '### defconfig failed'
               echo '```'
-              echo "$out" | tail -40
+              echo "$out" | tail -60
               echo '```'
               echo 'device dir:'; ls -la ../UniXNU-tb321fu | head -20
               echo 'python:'; python3.12 --version
             } >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "run $GITHUB_RUN_ID, step 'Select the device', commit $GITHUB_SHA"
+              echo '```'
+              echo "$out" | tail -60
+              echo '```'
+            } > /tmp/err.md
+            pip3.12 --version >/dev/null 2>&1 || true
+            GH_TOKEN="${{ github.token }}" gh issue create \
+              --title "kernel build log: defconfig" \
+              --body-file /tmp/err.md || true
             exit $rc
           fi
 
