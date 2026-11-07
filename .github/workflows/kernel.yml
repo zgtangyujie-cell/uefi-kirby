@@ -58,6 +58,10 @@ jobs:
         run: |
           set +e
           {
+            # zzz-boot-progress.patch adds boot_progress_* instrumentation and is applied last;
+            # the patches before it already rewrote bsd_init.c, so its hunks no longer match.
+            # It is diagnostic, not a boot requirement, so set it aside to see what is behind it.
+            mv patches/xnu/zzz-boot-progress.patch /tmp/zzz-boot-progress.patch.disabled || true
             echo "== defconfig"
             python3.12 unixnu defconfig tb321fu_defconfig -D ../UniXNU-tb321fu
             echo "== fetch"
