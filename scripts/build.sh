@@ -247,6 +247,32 @@ if [ -f "$UNIXNU_DXE_C" ]; then
 fi
 
 #
+# Diagnostic hold, one round only.  DarwinBoot's Fail path prints
+# "DARWINBOOT: boot refused: <status>" and then returns to UniXNU, whose
+# repaint covers that line, so the error code that decides the next step is
+# never readable.  CpuDeadLoop() right after the Print keeps the panel on that
+# line.  It cannot brick anything: the loop runs in firmware, a power cycle
+# comes back to Android, and `fastboot boot` never wrote a partition.
+#
+DARWINBOOT_C="$WORK/unixnu/drivers/DarwinBoot/DarwinBootPkg/Driver/DarwinBoot.c"
+if [ -f "$DARWINBOOT_C" ]; then
+  python3 -c '
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+t = p.read_text()
+if "KIRBY_DIAG_HOLD" in t:
+    sys.exit(0)
+needle = "Print (L\"DARWINBOOT: boot refused: %r; firmware retained\\n\", Status);"
+if needle not in t:
+    sys.exit("boot-refused print not found in DarwinBoot.c")
+t = t.replace(needle, needle + "\n  KIRBY_DIAG_HOLD: CpuDeadLoop ();", 1)
+p.write_text(t)
+print("DarwinBoot: Fail path now holds the panel")
+' "$DARWINBOOT_C" || { log "DarwinBoot diagnostic hold patch failed"; exit 1; }
+fi
+
+#
 # The SetVariable probe that used to sit here is gone.  It answered its
 # question -- attr=0x7 size=96 is perfectly valid and SetVariable still
 # returns EFI_INVALID_PARAMETER, so this platform's variable store simply
