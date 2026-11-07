@@ -486,12 +486,16 @@ def main():
         for site, stage, symbols in sites:
             if stage == 4 and args.paint_after:
                 band = args.paint_band
+                # Anchor on the bootArgs address itself: adding the field offset to
+                # the low 12 bits of PE_state could carry past 0xfff and silently
+                # truncate the `add` immediate.
+                boot_args = pe_state + PE_STATE_BOOT_ARGS_OFF
                 # Distinct colour per band so a photo shows which bands fired.
                 hue = ((band - 1) % 3)
                 lo, hi = (('0x00FF', '0xFFFF'), ('0xFF00', '0x00FF'), ('0xFFFF', '0x00FF'))[hue]
                 source = (".text\n.global _start\n_start:\n"
-                          + PAINT_PE.format(pe_page=f'{pe_state & ~0xFFF:#x}',
-                                            pe_off=f'{(pe_state & 0xFFF) + PE_STATE_BOOT_ARGS_OFF:#x}',
+                          + PAINT_PE.format(pe_page=f'{boot_args & ~0xFFF:#x}',
+                                            pe_off=f'{boot_args & 0xFFF:#x}',
                                             args='x0', band=band, lo=lo, hi=hi)
                           + "  bl callee\n  ret\n")
             else:
