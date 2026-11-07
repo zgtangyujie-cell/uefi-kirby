@@ -556,12 +556,12 @@ QrLogDxeEntry (
   // hang, and the only way out was a power cycle.  Nothing here needs more than
   // a few minutes to be photographed.
   //
-  for (UINTN Round = 0; Round < 180; Round++) {
+  for (UINTN Round = 0; Round < 60; Round++) {
     gBS->Stall (1000000);
   }
 
   //
-  // Hand the device back by itself.  Holding the panel forever meant every cycle
+  // Hand the device back by itself after one minute.  Holding the panel forever meant every cycle
   // ended with a long press on the power button; a cold reset boots Android,
   // where the host script is already polling adb and issues 'adb reboot
   // bootloader' on its own.  The whole loop then needs nothing but a photograph.
