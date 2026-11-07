@@ -14,14 +14,16 @@ version = 1
 # (docs/concepts/payload.md:35-42) has no dtb at all.  The ADT sidecar
 # Payloads/kernel.macho.adt is what XNU actually consumes.
 #
-# Five seconds, not sixty.  The kernel hand-off is verified from the Mach-O
-# and from DarwinBoot's own printed entry words, so there is nothing left that
-# a photograph of a countdown would add; a long menu just delays every test.
+# Zero: boot the default entry at once.  Menu.c:152 returns the default index
+# without even creating a timer when RemainingMs == 0, so this skips the menu
+# entirely.  The hand-off is already verified from the Mach-O (entry pa
+# 0x831F4488, entry words 140006f5), so no countdown photograph is needed and
+# every extra second only delays the next test.
 # fallback_timeout is the retry delay after a failed boot (Main.c:169 clears
-# Countdown), so it is short for the same reason.
+# Countdown); Config.c:1390 clamps it to at least 1.
 [boot]
-timeout = 5
-fallback_timeout = 5
+timeout = 0
+fallback_timeout = 1
 default = "xnu"
 
 [[entry]]
