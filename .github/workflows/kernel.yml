@@ -51,55 +51,34 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version || true
           python3 --version; python3.12 --version || true; df -h "$GITHUB_WORKSPACE"
 
-      - name: Select the device
-        working-directory: devices/UniXNU
-        run: |
-          set +e
-          out=$(python3.12 unixnu defconfig tb321fu_defconfig -D ../UniXNU-tb321fu 2>&1)
-          rc=$?
-          echo "$out"
-          if [ $rc -ne 0 ]; then
-            {
-              echo '### defconfig failed'
-              echo '```'
-              echo "$out" | tail -60
-              echo '```'
-              echo 'device dir:'; ls -la ../UniXNU-tb321fu | head -20
-              echo 'python:'; python3.12 --version
-            } >> "$GITHUB_STEP_SUMMARY"
-            {
-              echo "run $GITHUB_RUN_ID step 'Select the device' commit $GITHUB_SHA"
-              echo "$out"
-              echo '--- env ---'
-              command -v python3.12 || echo 'python3.12 MISSING'
-              python3.12 --version 2>&1 || true
-              ls -la ../UniXNU-tb321fu | head -20
-              ls ../UniXNU-tb321fu/configs || true
-            } > /tmp/err.txt
-            # Annotations are the one thing GitHub renders without a session.
-            echo "::error title=defconfig failed::$(head -3 /tmp/err.txt | tr '\n' ' ' | cut -c1-900)"
-            # Publish to a branch: the run page needs a session, this does not.
-            mkdir -p /tmp/pub && cp /tmp/err.txt /tmp/pub/defconfig-error.txt
-            cd /tmp/pub
-            git init -q
-            git -c user.email=ci@example.com -c user.name=ci checkout -q -b kernel-log
-            git add -A
-            git -c user.email=ci@example.com -c user.name=ci commit -qm "defconfig error"
-            git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" kernel-log || true
-            exit $rc
-          fi
-
-      - name: Fetch sources
-        working-directory: devices/UniXNU
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python3.12 unixnu fetch
-
       - name: Build kernel
         working-directory: devices/UniXNU
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3.12 unixnu build kernel
+        run: |
+          set +e
+          {
+            echo "== defconfig"
+            python3.12 unixnu defconfig tb321fu_defconfig -D ../UniXNU-tb321fu
+            echo "== fetch"
+            python3.12 unixnu fetch
+            echo "== build"
+            python3.12 unixnu build kernel
+          } > /tmp/build.log 2>&1
+          rc=$?
+          tail -60 /tmp/build.log
+          if [ $rc -ne 0 ]; then
+            # Annotations render without a session; step logs and summaries do not.
+            echo "::error title=kernel step failed::$(tail -8 /tmp/build.log | tr '\n' ' ' | cut -c1-900)"
+            mkdir -p /tmp/pub && cp /tmp/build.log /tmp/pub/kernel-build.log
+            cd /tmp/pub
+            git init -q
+            git -c user.email=ci@example.com -c user.name=ci checkout -q -b kernel-log
+            git add -A
+            git -c user.email=ci@example.com -c user.name=ci commit -qm "kernel build log"
+            git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" kernel-log || true
+            exit $rc
+          fi
 
       - name: Upload the text logs
         if: always()
