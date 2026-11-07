@@ -561,13 +561,12 @@ QrLogDxeEntry (
   }
 
   //
-  // Hand the device back by itself after one minute.  Holding the panel forever meant every cycle
-  // ended with a long press on the power button; a cold reset boots Android,
-  // where the host script is already polling adb and issues 'adb reboot
-  // bootloader' on its own.  The whole loop then needs nothing but a photograph.
+  // Return at once.  The payload now carries a kernel, so BDS has to reach
+  // UniXNU instead of being held here: the countdown, the menu and the XNU
+  // handoff all happen after this driver.  Restore the capture hold (and the
+  // ResetSystem that followed it) when a photograph is needed again.
   //
-  DEBUG ((DEBUG_ERROR, "QrLog: capture window over, resetting\n"));
-  gRT->ResetSystem (EfiResetCold, EFI_SUCCESS, 0, NULL);
+  return EFI_SUCCESS;
 
   return EFI_SUCCESS;
 }
