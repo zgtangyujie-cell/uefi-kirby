@@ -202,7 +202,7 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
     # run -- which is why 9d2c207, 5e9a0f3 and 35405bd all shipped an
     # untouched _start while the build kept succeeding.
     #
-    ENTRY_PROBE="$ROOT/scripts/patch-xnu-entry-probe.py"
+    ENTRY_PROBE="$WORK/unixnu/scripts/patch-xnu-entry-probe.py"
     if [ -f "$ENTRY_PROBE" ]; then
       #
       # The probe shells out to llvm-nm / clang / ld.lld / llvm-objcopy /
@@ -223,11 +223,19 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
 import struct, sys
+# _start is the single `b` to _start_first_cpu.  The probe replaces it with a
+# branch into the stage-1 cave 0x78 bytes later, so the expected word is
+# `b +0x78` = 0x1400001E.  Checking the exact value rather than "anything
+# changed" catches a probe that wrote a branch to the wrong place.
 d = open(sys.argv[1], 'rb').read()
 word = struct.unpack_from('<I', d, 0x3EC488)[0]
 if word == 0x140006F5:
     sys.exit("_start is still the original branch")
-print(f"_start now {word:#010x}")
+if word != 0x1400001E:
+    sys.exit("_start is %#010x, the stage-1 branch is 0x1400001e" % word)
+if not any(struct.unpack_from('<8I', d, 0x3EC48C)):
+    sys.exit("_start branches into empty padding")
+print(f"_start now {word:#010x}, stage-1 cave written")
 PY
     else
       log "entry probe script missing at $ENTRY_PROBE; refusing to ship a kernel without colour bars"
