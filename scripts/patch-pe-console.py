@@ -33,6 +33,13 @@ SYMBOLS = ("_PE_create_console", "PE_create_console")
 PATCHES = (
     (0x48, 0xB9400008, 0x52800008, "ldr w8,[x0] -> mov w8,#0"),
     (0x64, 0x54000180, 0x1400000C, "b.eq -> b (skip bzero)"),
+    #
+    # PE_init_platform already called _initialize_screen(w1 = 5) -- 5 is the
+    # video console type -- and _vc_progress_initialize before it.  This call
+    # then runs _initialize_screen again with w1 = 1 or 2 and rewrites _vinfo,
+    # throwing the video mode away.  Force the same type the first call used.
+    #
+    (0xA4, 0x1A941681, 0x528000A1, "cinc w1,w20,cond -> mov w1,#5"),
 )
 
 
