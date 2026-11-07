@@ -219,19 +219,18 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       echo "PROBE: kernel $KERNEL_TMP ($(wc -c < "$KERNEL_TMP") bytes)"
       echo "PROBE: llvm-nm=$(command -v llvm-nm || echo MISSING) clang=$(command -v clang || echo MISSING)"
       #
-      # Stage 3 already answered its question: c5d38a4 reset back to Android
-      # six seconds after the MMU came on, while 88c6a55 (--no-reset) stayed
-      # parked.  Same kernel, same ADT, only the probe differs -- so the CPU
-      # really does get through the MMU enable.
+      # Progress so far, each step measured without a screen:
+      #   c5d38a4  --reset-delay 6          reset -> CPU got through the MMU
+      #   d1a26d7  reset after _PE_init_platform in _arm_init -> returned
       #
-      # Now move the checkpoint one function further: reset right after
-      # _PE_init_platform returns inside _arm_init.  That symbol is called from
-      # exactly one site (0xfffffff0079b3a98), so no --occurrence is needed.
-      # A reset means PE_init_platform returned; no reset means the kernel dies
-      # inside it, which is where the ADT node set starts to matter.
+      # Next checkpoint: reset just before _arm_init calls _machine_startup
+      # (bl at 0xfffffff0079b3e90).  machine_startup never returns, so
+      # --reset-after would never fire; --reset-before is the only usable form.
+      # A reset means control reached the call; no reset means the kernel dies
+      # between PE_init_platform returning and this call.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _PE_init_platform --in _arm_init ||
+        --reset-after _machine_startup --in _arm_init --reset-before ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
