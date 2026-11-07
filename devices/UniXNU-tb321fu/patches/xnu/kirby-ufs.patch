@@ -15,7 +15,7 @@ new file mode 100644
 index 0000000..1d66736
 --- /dev/null
 +++ b/bsd/dev/kirby_ufs.c
-@@ -0,0 +1,873 @@
+@@ -0,0 +1,932 @@
 +/*
 + * TB321FU (kirby) UFS root device (read-only); ported from kebab (SM8250).
 + *
@@ -461,6 +461,62 @@ index 0000000..1d66736
 +	return ENOENT;
 +}
 +
++/*
++ * Re-scope the published device to the root window of the UniXNU manifest.
++ *
++ * The manifest sits at the start of the partition (concepts/userdata):
++ *   +0x00  "SHNGROOT", then version u32, count u32, image_bytes u64
++ *   +0x18  window[0]: name[32], offset u64 (+0x38), size u64 (+0x40)
++ * The windows themselves start at 0x100000 and are 1 MiB aligned.
++ *
++ * APFS looks for a container at offset 0 of the block device it is given,
++ * so handing it the whole partition puts the container out of reach.
++ * Publishing window[0] is what makes the container addressable.
++ *
++ * No manifest means the partition is something else (Android f2fs here);
++ * leave first_block and nblocks alone and publish it whole.
++ */
++static int
++kirby_ufs_apply_manifest(void)
++{
++	const uint8_t *b = (const uint8_t *)(su.dma + DMA_BOUNCE);
++	int error = ufs_read_blocks(su.first_block, 1);
++	if (error) {
++		printf("KIRBY UFS: cannot read block 0 for the manifest check: %d\n", error);
++		return error;
++	}
++	if (memcmp(b, "SHNGROOT", 8) != 0) {
++		return 0;
++	}
++	uint32_t version, count;
++	memcpy(&version, b + 8, 4);
++	memcpy(&count, b + 12, 4);
++	if ((version != 1 && version != 2) || count == 0 || count > 8) {
++		printf("KIRBY UFS: unsupported manifest v%u with %u windows\n", version, count);
++		return ENXIO;
++	}
++	char name[33];
++	uint64_t offset, size;
++	memcpy(name, b + 24, 32);
++	name[32] = 0;
++	memcpy(&offset, b + 56, 8);
++	memcpy(&size, b + 64, 8);
++	if (!size || (offset % UFS_BLOCK) || (size % UFS_BLOCK)) {
++		printf("KIRBY UFS: window \"%s\" is not block aligned (0x%llx/0x%llx)\n", name, offset, size);
++		return ENXIO;
++	}
++	uint64_t first = offset / UFS_BLOCK, blocks = size / UFS_BLOCK;
++	if (first + blocks > su.nblocks) {
++		printf("KIRBY UFS: window \"%s\" runs past the partition\n", name);
++		return ENXIO;
++	}
++	printf("KIRBY UFS: manifest v%u, %u window(s); publishing \"%s\" at +0x%llx, %llu MiB\n",
++	    version, count, name, offset, size >> 20);
++	su.first_block += first;
++	su.nblocks = blocks;
++	return 0;
++}
++
 +static int
 +ufs_take_over_host(void)
 +{
@@ -834,6 +890,9 @@ index 0000000..1d66736
 +	}
 +	if (!error) {
 +		error = ufs_find_partition(want);
++	}
++	if (!error) {
++		error = kirby_ufs_apply_manifest();
 +	}
 +	if (error) {
 +		return error;

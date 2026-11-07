@@ -79,6 +79,102 @@ NEW_REG_CHECK = (
 )
 
 
+# UniXNU's userdata layout puts a manifest at the start of the partition and
+# the actual filesystems in 1 MiB-aligned windows after it:
+#
+#   0x000000  "SHNGROOT" + version + count + image_bytes
+#   0x000018  window[0]: name[32], offset u64, size u64, block_size, flags, sha256
+#   0x100000  window[0] itself (the OS APFS container)
+#
+# APFS looks for a container at offset 0 of whatever block device it is handed,
+# so publishing the whole partition leaves the container unreachable.  Publish
+# window[0] instead.  A partition without the manifest keeps the old behaviour,
+# so Android's own userdata still works.
+OLD_FIND_TAIL = (
+    '+\tif (!error) {\n'
+    '+\t\terror = ufs_find_partition(want);\n'
+    '+\t}\n'
+    '+\tif (error) {\n'
+    '+\t\treturn error;\n'
+    '+\t}\n'
+    '+\n'
+    '+\tsu.bmajor = bdevsw_add(-1, &kirby_ufs_bdevsw);\n'
+)
+
+NEW_FIND_TAIL = (
+    '+\tif (!error) {\n'
+    '+\t\terror = ufs_find_partition(want);\n'
+    '+\t}\n'
+    '+\tif (!error) {\n'
+    '+\t\terror = kirby_ufs_apply_manifest();\n'
+    '+\t}\n'
+    '+\tif (error) {\n'
+    '+\t\treturn error;\n'
+    '+\t}\n'
+    '+\n'
+    '+\tsu.bmajor = bdevsw_add(-1, &kirby_ufs_bdevsw);\n'
+)
+
+MANIFEST_FUNCTION = (
+    '+/*\n'
+    '+ * Re-scope the published device to the root window of the UniXNU manifest.\n'
+    '+ *\n'
+    '+ * The manifest sits at the start of the partition (concepts/userdata):\n'
+    '+ *   +0x00  "SHNGROOT", then version u32, count u32, image_bytes u64\n'
+    '+ *   +0x18  window[0]: name[32], offset u64 (+0x38), size u64 (+0x40)\n'
+    '+ * The windows themselves start at 0x100000 and are 1 MiB aligned.\n'
+    '+ *\n'
+    '+ * APFS looks for a container at offset 0 of the block device it is given,\n'
+    '+ * so handing it the whole partition puts the container out of reach.\n'
+    '+ * Publishing window[0] is what makes the container addressable.\n'
+    '+ *\n'
+    '+ * No manifest means the partition is something else (Android f2fs here);\n'
+    '+ * leave first_block and nblocks alone and publish it whole.\n'
+    '+ */\n'
+    '+static int\n'
+    '+kirby_ufs_apply_manifest(void)\n'
+    '+{\n'
+    '+\tconst uint8_t *b = (const uint8_t *)(su.dma + DMA_BOUNCE);\n'
+    '+\tint error = ufs_read_blocks(su.first_block, 1);\n'
+    '+\tif (error) {\n'
+    '+\t\tprintf("KIRBY UFS: cannot read block 0 for the manifest check: %d\\n", error);\n'
+    '+\t\treturn error;\n'
+    '+\t}\n'
+    '+\tif (memcmp(b, "SHNGROOT", 8) != 0) {\n'
+    '+\t\treturn 0;\n'
+    '+\t}\n'
+    '+\tuint32_t version, count;\n'
+    '+\tmemcpy(&version, b + 8, 4);\n'
+    '+\tmemcpy(&count, b + 12, 4);\n'
+    '+\tif ((version != 1 && version != 2) || count == 0 || count > 8) {\n'
+    '+\t\tprintf("KIRBY UFS: unsupported manifest v%u with %u windows\\n", version, count);\n'
+    '+\t\treturn ENXIO;\n'
+    '+\t}\n'
+    '+\tchar name[33];\n'
+    '+\tuint64_t offset, size;\n'
+    '+\tmemcpy(name, b + 24, 32);\n'
+    '+\tname[32] = 0;\n'
+    '+\tmemcpy(&offset, b + 56, 8);\n'
+    '+\tmemcpy(&size, b + 64, 8);\n'
+    '+\tif (!size || (offset % UFS_BLOCK) || (size % UFS_BLOCK)) {\n'
+    '+\t\tprintf("KIRBY UFS: window \\"%s\\" is not block aligned (0x%llx/0x%llx)\\n", name, offset, size);\n'
+    '+\t\treturn ENXIO;\n'
+    '+\t}\n'
+    '+\tuint64_t first = offset / UFS_BLOCK, blocks = size / UFS_BLOCK;\n'
+    '+\tif (first + blocks > su.nblocks) {\n'
+    '+\t\tprintf("KIRBY UFS: window \\"%s\\" runs past the partition\\n", name);\n'
+    '+\t\treturn ENXIO;\n'
+    '+\t}\n'
+    '+\tprintf("KIRBY UFS: manifest v%u, %u window(s); publishing \\"%s\\" at +0x%llx, %llu MiB\\n",\n'
+    '+\t    version, count, name, offset, size >> 20);\n'
+    '+\tsu.first_block += first;\n'
+    '+\tsu.nblocks = blocks;\n'
+    '+\treturn 0;\n'
+    '+}\n'
+    '+\n'
+)
+
+
 def fix_new_file_hunk(text):
     """Replace the reg check and correct the new file's hunk length.
 
@@ -89,6 +185,17 @@ def fix_new_file_hunk(text):
     if OLD_REG_CHECK not in text:
         raise SystemExit("the reg-check block to replace was not found")
     text = text.replace(OLD_REG_CHECK, NEW_REG_CHECK)
+
+    # The manifest reader goes just before ufs_take_over_host, so it can use
+    # ufs_read_blocks (defined earlier) and stays out of the adopt path.
+    anchor = '+static int\n+ufs_take_over_host(void)\n+{\n'
+    if anchor not in text:
+        raise SystemExit("could not find ufs_take_over_host to insert the manifest reader before")
+    text = text.replace(anchor, MANIFEST_FUNCTION + anchor, 1)
+
+    if OLD_FIND_TAIL not in text:
+        raise SystemExit("the post-find_partition block was not found")
+    text = text.replace(OLD_FIND_TAIL, NEW_FIND_TAIL)
 
     lines = text.splitlines(keepends=True)
     start = next(i for i, line in enumerate(lines)

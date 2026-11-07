@@ -107,15 +107,17 @@ def read_symbols(data, symtab):
     table = {}
     for i in range(nsyms):
         strx, ntype, _, _, value = struct.unpack_from("<IBBHQ", data, symoff + i * 16)
-        if strx >= strsize or ntype not in (0x0F, 0x1E, 0x24):
+        # N_UNDF (32) is an undefined reference and always carries value 0; it
+        # would otherwise shadow the real definition of a global.  Functions are
+        # N_FUN (30) / 36 here, globals are N_SECT (15); keep everything except
+        # N_UNDF and keep only entries with a real address.
+        if strx >= strsize or ntype == 0x20 or not value:
             continue
         end = data.find(b"\0", stroff + strx)
         if end < 0:
             continue
         table.setdefault(value, data[stroff + strx:end].decode("utf-8", "replace"))
     return table
-
-
 def branch_target(va, word):
     imm = word & 0x3FFFFFF
     if imm & 0x2000000:
