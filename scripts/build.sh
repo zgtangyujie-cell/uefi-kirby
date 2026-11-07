@@ -161,6 +161,20 @@ rm -f "$KERNEL_TMP" "$ADT_TMP"
 if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
   git -C "$ROOT" show FETCH_HEAD:kernel.macho > "$KERNEL_TMP" 2>/dev/null
   log "kernel from kernel-out: $(wc -c < "$KERNEL_TMP") bytes"
+  #
+  # PE_create_console reads the iBoot video console handoff at PA 0x3C0FC000
+  # before it looks at boot_args->Video.  That page is uninitialised under
+  # `fastboot boot`, so the load faults and the tablet resets right after
+  # DarwinEnter -- the sequence measured on 8f79eb6/d80c6fd.  UniXNU's elden
+  # record measured the same fault and found that returning from the function
+  # immediately lets arm_init reach machine_startup.  The script resolves the
+  # symbol through LC_SYMTAB, so a kernel rebuild that moves the address still
+  # gets patched.
+  #
+  if [ -s "$KERNEL_TMP" ]; then
+    python3 "$ROOT/scripts/patch-pe-console.py" "$KERNEL_TMP" ||
+      { log "PE_create_console patch failed; refusing to ship an unpatched kernel"; exit 1; }
+  fi
 else
   log "no kernel-out branch; the payload will carry the config only"
 fi
