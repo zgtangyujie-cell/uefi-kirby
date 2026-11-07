@@ -487,6 +487,13 @@ QrLogDxeEntry (
   EFI_STATUS  Status;
 
   mGop      = NULL;
+  //
+  // Diagnostic build: paint nothing.  The panel keeps whatever the firmware left
+  // on it, so anything that appears afterwards is BDS or UniXNU drawing -- which
+  // is the question.  Put the body back by deleting this return.
+  //
+  return EFI_SUCCESS;
+
   mFrame    = 0;
   mTickReported = FALSE;
 
