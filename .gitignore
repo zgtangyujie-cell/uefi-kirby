@@ -6,6 +6,9 @@ Build/
 *.fd.gz
 *.elf
 *.bin
+# ...except the UniXNU bring-up payload: it is a source file, not build output.
+# Without this the FDF's SECTION RAW silently has nothing to point at.
+!Platforms/Lenovo/kirbyPkg/Resources/payload.bin
 __pycache__/
 *.pyc
 

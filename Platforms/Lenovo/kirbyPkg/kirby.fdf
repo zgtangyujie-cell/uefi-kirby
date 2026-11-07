@@ -111,7 +111,7 @@ READ_LOCK_STATUS   = TRUE
   # publishes it as a block device.
   #
   FILE FREEFORM = 7B1E4C62-2D5A-4F83-9E71-3C8A5D0B6F24 {
-    SECTION RAW = kirbyPkg/Resources/payload.img
+    SECTION RAW = kirbyPkg/Resources/payload.bin
     SECTION UI  = "UniXNUPayload"
   }
 
