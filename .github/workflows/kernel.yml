@@ -53,7 +53,22 @@ jobs:
 
       - name: Select the device
         working-directory: devices/UniXNU
-        run: python3.12 unixnu defconfig tb321fu_defconfig -D ../UniXNU-tb321fu
+        run: |
+          set +e
+          out=$(python3.12 unixnu defconfig tb321fu_defconfig -D ../UniXNU-tb321fu 2>&1)
+          rc=$?
+          echo "$out"
+          if [ $rc -ne 0 ]; then
+            {
+              echo '### defconfig failed'
+              echo '```'
+              echo "$out" | tail -40
+              echo '```'
+              echo 'device dir:'; ls -la ../UniXNU-tb321fu | head -20
+              echo 'python:'; python3.12 --version
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit $rc
+          fi
 
       - name: Fetch sources
         working-directory: devices/UniXNU
