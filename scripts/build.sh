@@ -237,10 +237,19 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       # when the flag at 0x715c518 is non-zero (cbz at 0x79b3c6c), so a missing
       # reset could mean "not called" rather than "died before it".
       # PE_consistent_debug_inherit is an unconditional bl, so the signal is
-      # unambiguous this time.
+      # A checkpoint that returns resets; one that does not never resets, and
+      # the tablet goes completely dark (XNU never brings USB up).  That is the
+      # whole signal, so the probe must not depend on anything else.
+      #
+      # --reset-delay 30 instead of the default 6: a return is not the only way
+      # to get a reset.  panic() would also restart the tablet if panic_reboot
+      # were set (it is not, so panic parks) - but to prove which one happened,
+      # the deliberate 30 s wait makes the two distinguishable by time: a probe
+      # reset moves ~24 s later, a panic restart does not move at all.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _IOFindBSDRoot --in _bsd_init ||
+        --reset-after _IOFindBSDRoot --in _bsd_init \
+        --reset-delay 30 ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
