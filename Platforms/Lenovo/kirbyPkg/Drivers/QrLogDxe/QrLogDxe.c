@@ -549,7 +549,13 @@ QrLogDxeEntry (
   // inside the ABL kernel window or it did not, and that answer only exists
   // in the log -- BDS would paint UniXNU over it.
   //
-  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
+  //
+  // Ten minutes, not 194 days.  The old bound was 0xFFFFFF rounds of one
+  // second each; it held the panel long enough that a capture looked like a
+  // hang, and the only way out was a power cycle.  Nothing here needs more than
+  // a few minutes to be photographed.
+  //
+  for (UINTN Round = 0; Round < 600; Round++) {
     gBS->Stall (1000000);
   }
 

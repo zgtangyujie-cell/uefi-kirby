@@ -415,6 +415,8 @@ text = p.read_text(encoding="utf-8")
 needle = "            combined_data = boot_shim_payload.read_bytes () + uefi_fd.read_bytes ()"
 extra = (
     needle + "\n"
+    "            _kirby_pad = (-len (combined_data)) % 4096\n"
+    "            combined_data += b\"\\0\" * _kirby_pad\n"
     "            _kirby_payload = Path (\"Platforms/Lenovo/kirbyPkg/Resources/payload.bin\")\n"
     "            if _kirby_payload.is_file ():\n"
     "                combined_data += _kirby_payload.read_bytes ()\n"
