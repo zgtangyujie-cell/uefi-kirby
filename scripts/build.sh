@@ -318,12 +318,12 @@ import sys
 from pathlib import Path
 p = Path(sys.argv[1])
 t = p.read_text()
-if "KirbyVcGate" in t:
+if "kirby: open the vcputc gate" in t:
     sys.exit(0)
 needle = "DiagDraw (KirbyDiag, 6); }"
 if needle not in t:
     sys.exit("KirbyDiag paint block not found in DarwinBoot.c")
-gate = "\n  KirbyVcGate: *(volatile UINT32 *)(UINTN)(Address + (0xFFFFFFF007B20E04ULL - Kernel.Base)) = 1;"
+gate = "\n  /* kirby: open the vcputc gate (b20e04) */\n  *(volatile UINT32 *)(UINTN)(Address + (0xFFFFFFF007B20E04ULL - Kernel.Base)) = 1;"
 t = t.replace(needle, needle + gate, 1)
 p.write_text(t)
 print("DarwinBoot: opens the vcputc gate at b20e04")
