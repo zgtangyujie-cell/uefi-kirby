@@ -544,13 +544,14 @@ QrLogDxeEntry (
     );
 
   //
-  // Hand the panel back to BDS.  The payload chain is complete and measured:/n  //   KIRBYINITRD: volume at 0x... size 0x2000 Success
-  //   QrLog: pcd2=1 blkio=1 diskio=1 fs=1 uc1=0 uc2=1
-  //   QrLog: toml lo=Success up=Success
-  // The last line is the one that mattered: Fat matched the mixed-case long
-  // path only after the volume carried VFAT long-name entries, so UniXNU can
-  // now read \EFI\UniXNU\unixnu.toml instead of falling back to its built-in
-  // configuration.  Restore this hold only when another capture is needed.
+  // Hold the panel: this build is asking a question, not showing off the
+  // payload.  ScanKernelWindow either found the boot image's 8 MiB ramdisk
+  // inside the ABL kernel window or it did not, and that answer only exists
+  // in the log -- BDS would paint UniXNU over it.
   //
+  for (UINTN Round = 0; Round < 0xFFFFFF; Round++) {
+    gBS->Stall (1000000);
+  }
+
   return EFI_SUCCESS;
 }
