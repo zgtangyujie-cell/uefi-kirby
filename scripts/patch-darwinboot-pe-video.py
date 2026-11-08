@@ -107,10 +107,10 @@ SEED = '''  //
 
       if (!KirbyFindSymbol (Image, ImageSize, "_PE_state", &PeState)) {
         UnicodeSPrint (KirbySeedText, sizeof (KirbySeedText), L"seed: _PE_state NOT FOUND in symtab");
-        DiagDraw (KirbySeedText, 7);
+        DiagDraw (KirbySeedText, 12);
       } else {
         UnicodeSPrint (KirbySeedText, sizeof (KirbySeedText), L"seed: PE_state %lx base %lx", PeState, Kernel.Base);
-        DiagDraw (KirbySeedText, 7);
+        DiagDraw (KirbySeedText, 12);
       }
     }
     if (KirbyFindSymbol (Image, ImageSize, "_PE_state", &PeState)) {
