@@ -102,6 +102,17 @@ SEED = '''  //
     UINT64  PeState;
     UINT64  PeVideo;
 
+    {
+      CHAR16  KirbySeedText[96];
+
+      if (!KirbyFindSymbol (Image, ImageSize, "_PE_state", &PeState)) {
+        UnicodeSPrint (KirbySeedText, sizeof (KirbySeedText), L"seed: _PE_state NOT FOUND in symtab");
+        DiagDraw (KirbySeedText, 7);
+      } else {
+        UnicodeSPrint (KirbySeedText, sizeof (KirbySeedText), L"seed: PE_state %lx base %lx", PeState, Kernel.Base);
+        DiagDraw (KirbySeedText, 7);
+      }
+    }
     if (KirbyFindSymbol (Image, ImageSize, "_PE_state", &PeState)) {
       PeVideo = PeState + 8;
       if ((PeVideo >= Kernel.Base) && (PeVideo < Kernel.Base + (Kernel.End - Kernel.Base))) {

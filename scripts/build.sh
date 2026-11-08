@@ -496,7 +496,7 @@ fi
 # rather than measured.  Turning the seed off answers a single question: does
 # the charging screen follow the seed, or was it already there?
 #
-if false; then
+if [ -f "$DARWINBOOT_C" ]; then
   python3 "$ROOT/scripts/patch-darwinboot-pe-video.py" "$DARWINBOOT_C" ||
     { log "DarwinBoot PE_state.video seed failed"; exit 1; }
 fi
