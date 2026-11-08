@@ -498,91 +498,92 @@ QUSB_RESULT QcomUsbRestoreDma(QUSB_READ32 read32, QUSB_WRITE32 write32,
   return QusbQualified;
 }
 
-/* Bounded busy wait for a GDSC or branch-clock ack.  This runs from
- * PE_init_kprintf, before any timer service exists, so it spins on a volatile
- * counter instead of reading a clock. */
-static void qualifier_spin(void)
-{
-  volatile unsigned int spins;
-  for (spins = 0; spins < 200; ++spins) {
-  }
-}
-
-/* Bring the USB power domain and its five branch clocks up from an off state.
+/* Optional branch-only resume: ungate the five USB branch clocks.
  *
- * The backend was written for a board where firmware hands the kernel a powered
- * controller: Sm8550.h says "Inherited PHY/power only" and
- * QcomUsbInspectInherited() therefore only reads.  Under `fastboot boot` that
- * premise does not hold.  ABL is a loader, not a hand-off, and it stops the USB
- * it used for fastboot before jumping, so inspection reports
- * QusbPowerDomainOff / QusbResetAsserted / QusbClockOff and the module gives up
- * silently -- at that point it has no output channel to say so on.
+ * The contract in QcomUsbQualify.h is deliberately narrow -- verify the power
+ * domain is already up, then touch nothing but CBCR bit0 (CLK_ENABLE).  No
+ * GDSCR, BCR, PLL, rail or PMIC write happens here.
  *
- * This is what Linux's gdsc_enable() plus clk_branch2_enable() do for the same
- * block, reduced to the sequence this controller needs:
- *   BCR.BLK_ARES  <- 0           release the block reset
- *   CFG_GDSCR     <- PWR_ON      request power, poll POWER_UP_COMPLETE (bit 16)
- *   CBCR[0..4]    <- CLK_ENABLE  poll CLK_OFF (bit 31) clearing on each branch
+ * That narrowness matches what this board needs: `fastboot boot` hands over a
+ * controller ABL was still using for fastboot, so CFG_GDSCR.POWER_UP_COMPLETE
+ * (bit 16) is set, but ABL gates the branch clocks on the way out, so
+ * QcomUsbInspectInherited() reports QusbClockOff.
  *
- * `state` holds the values QcomUsbInspectInherited() read, so
- * QcomUsbRestoreClocks() can put the block back exactly as it was found.
+ * A branch that is already running is not touched and is not recorded in
+ * active_mask, so QcomUsbRestoreClocks() can never gate a clock this call did
+ * not enable.  A timeout leaves active_mask set on purpose: the caller has to
+ * restore after stopping DMA, as the header says.
  */
 QUSB_RESULT QcomUsbResumeClocks(QUSB_READ32 read32, QUSB_WRITE32 write32,
-                                void *cookie, QUSB_INHERITED *state)
+                               QUSB_BARRIER barrier, QUSB_DELAY_US delay_us,
+                               void *cookie, QUSB_U32 poll_us,
+                               QUSB_CLOCK_LEASE *lease)
 {
   static const QUSB_U32 cbcr[] = QUD_GCC_CBCR_OFFSETS;
-  unsigned int i, spins;
-  QUSB_U32 value = 0;
+  unsigned int i, waited;
+  QUSB_U32 value;
 
-  if (!read32 || !write32 || !state) return QusbBadArgument;
+  if (!read32 || !write32 || !lease) return QusbBadArgument;
+  if (poll_us < 1U || poll_us > 1000U) return QusbBadArgument;
+  clear_bytes(lease, sizeof(*lease));
 
-  if (!write32(cookie, QUSB_GCC_BASE + QUD_GCC_BCR_OFFSET, state->gcc_bcr & ~1U))
-    return QusbWriteFailed;
+  if (!read32(cookie, QUSB_GCC_BASE + QUD_GCC_CFG_GDSCR_OFFSET, &lease->cfg_gdscr))
+    return QusbReadFailed;
+  if (!(lease->cfg_gdscr & (1U << 16))) return QusbPowerDomainOff;
+  if (!read32(cookie, QUSB_GCC_BASE + QUD_GCC_GDSCR_OFFSET, &lease->gdscr))
+    return QusbReadFailed;
+  if (lease->gdscr & 2U) return QusbUnsafePowerState;   /* HW_CONTROL */
+  if (!read32(cookie, QUSB_GCC_BASE + QUD_GCC_BCR_OFFSET, &lease->bcr))
+    return QusbReadFailed;
+  if (lease->bcr & 1U) return QusbResetAsserted;
 
-  if (!write32(cookie, QUSB_GCC_BASE + QUD_GCC_CFG_GDSCR_OFFSET,
-               state->gcc_cfg_gdscr | 1U))
-    return QusbWriteFailed;
-  for (spins = 0; spins < 1000; ++spins) {
-    if (!read32(cookie, QUSB_GCC_BASE + QUD_GCC_CFG_GDSCR_OFFSET, &value))
+  for (i = 0; i < 5; ++i) {
+    if (!read32(cookie, QUSB_GCC_BASE + cbcr[i], &lease->original[i]))
       return QusbReadFailed;
-    if (value & (1U << 16)) break;
-    qualifier_spin();
   }
-  if (!(value & (1U << 16))) return QusbPowerDomainOff;
+  if (barrier) barrier(cookie);
 
   for (i = 0; i < 5; ++i) {
-    if (!write32(cookie, QUSB_GCC_BASE + cbcr[i], state->gcc_cbcr[i] | 1U))
+    if (!(lease->original[i] & 0x80000000U)) continue;
+    if (!write32(cookie, QUSB_GCC_BASE + cbcr[i], lease->original[i] | 1U))
       return QusbWriteFailed;
+    lease->active_mask |= (1U << i);
   }
+  if (barrier) barrier(cookie);
+
   for (i = 0; i < 5; ++i) {
+    if (!(lease->active_mask & (1U << i))) continue;
     value = 0x80000000U;
-    for (spins = 0; spins < 1000; ++spins) {
+    for (waited = 0; waited < poll_us; ++waited) {
       if (!read32(cookie, QUSB_GCC_BASE + cbcr[i], &value))
         return QusbReadFailed;
       if (!(value & 0x80000000U)) break;
-      qualifier_spin();
+      if (delay_us) delay_us(cookie, 1);
     }
-    if (value & 0x80000000U) return QusbClockTimeout;
+    if (value & 0x80000000U) {
+      lease->failed_index = i;
+      return QusbClockTimeout;
+    }
   }
   return QusbQualified;
 }
 
-/* Put the block back the way QcomUsbInspectInherited() found it. */
+/* Undo exactly what QcomUsbResumeClocks() enabled, from the saved originals. */
 QUSB_RESULT QcomUsbRestoreClocks(QUSB_READ32 read32, QUSB_WRITE32 write32,
-                                 void *cookie, QUSB_INHERITED *state)
+                                QUSB_BARRIER barrier, void *cookie,
+                                QUSB_CLOCK_LEASE *lease)
 {
   static const QUSB_U32 cbcr[] = QUD_GCC_CBCR_OFFSETS;
   unsigned int i;
 
-  if (!read32 || !write32 || !state) return QusbBadArgument;
+  if (!read32 || !write32 || !lease) return QusbBadArgument;
   for (i = 0; i < 5; ++i) {
-    if (!write32(cookie, QUSB_GCC_BASE + cbcr[i], state->gcc_cbcr[i]))
+    if (!(lease->active_mask & (1U << i))) continue;
+    if (!write32(cookie, QUSB_GCC_BASE + cbcr[i], lease->original[i]))
       return QusbWriteFailed;
   }
-  if (!write32(cookie, QUSB_GCC_BASE + QUD_GCC_CFG_GDSCR_OFFSET, state->gcc_cfg_gdscr))
-    return QusbWriteFailed;
-  if (!write32(cookie, QUSB_GCC_BASE + QUD_GCC_BCR_OFFSET, state->gcc_bcr))
-    return QusbWriteFailed;
+  if (barrier) barrier(cookie);
+  lease->active_mask = 0;
   return QusbQualified;
 }
 

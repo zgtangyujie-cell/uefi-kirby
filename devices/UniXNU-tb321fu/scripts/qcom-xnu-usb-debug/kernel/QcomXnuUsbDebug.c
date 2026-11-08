@@ -812,18 +812,22 @@ int qcom_usb_debug_init(void)
     diag_checkpoint(QCOM_USB_DEBUG_DIAG_INSPECT);
     result = QcomUsbInspectInherited(physical_read, 0, &inherited);
     native.status.qcom_result = (uint32_t)result;
-    if (result != QusbQualified) {
-        /* `fastboot boot` is load-and-jump, not a hand-off: ABL stops the USB it
-         * used for fastboot and does not leave this block powered, so the checks
-         * above report QusbPowerDomainOff / QusbResetAsserted / QusbClockOff on a
-         * controller that is otherwise fine.  QcomUsbResumeClocks() was declared
-         * in QcomUsbQualify.h but had no implementation until this profile; run it
-         * and inspect once more.  A second refusal takes the original path below,
+    if (result == QusbClockOff || result == QusbClockForcedOff) {
+        /* `fastboot boot` leaves the controller powered -- ABL was driving it
+         * for fastboot -- but gates the branch clocks on the way out, so
+         * CFG_GDSCR.POWER_UP_COMPLETE is set while CBCR.CLK_OFF is not.  That
+         * is the one inspection failure the backend's own contract lets us
+         * repair: QcomUsbResumeClocks() writes nothing but CBCR bit0 and
+         * refuses every other state.  Anything else (domain off, reset
+         * asserted, unknown DWC3) still falls through to the refusal below,
          * so a genuinely bad controller is not masked.
          *
-         * The original "do not wake a clock-gated old DMA engine" concern does not
-         * apply here: nothing has run since ABL, so there is no old DMA owner. */
-        QUSB_RESULT resumed = QcomUsbResumeClocks(physical_read, physical_write, 0, &inherited);
+         * The original concern -- do not wake a clock-gated old DMA engine --
+         * does not apply: nothing has run since ABL left, so there is no old
+         * DMA owner and no buffer of ours to lose. */
+        QUSB_CLOCK_LEASE clock_lease;
+        QUSB_RESULT resumed = QcomUsbResumeClocks(physical_read, physical_write,
+                                                 barrier, delay_us, 0, 200, &clock_lease);
         if (resumed == QusbQualified) {
             result = QcomUsbInspectInherited(physical_read, 0, &inherited);
         }
@@ -834,13 +838,8 @@ int qcom_usb_debug_init(void)
     }
     diag_checkpoint(QCOM_USB_DEBUG_DIAG_GATES_WIDTH);
     /* GDSCR HW_CONTROL is bit1; CFG_GDSCR.POWER_UP_COMPLETE is a separate
-     * register's bit16, already checked by QcomUsbInspectInherited.
-     * bit0 is the software PWR_ON request.  After QcomUsbResumeClocks() this
-     * code has just set it, so requiring it to stay clear would reject the
-     * very state we asked for; only HW_CONTROL (bit1) still means a state this
-     * backend must not touch.  When the block was inherited powered, bit0 was
-     * clear anyway, so `& 2u` also covers the inherited case. */
-    if (inherited.gcc_gdscr & 2u) {
+     * register's bit16, already checked by QcomUsbInspectInherited. */
+    if (inherited.gcc_gdscr & 3u) {
         fail(QCOM_USB_DEBUG_UNSTABLE_POWER_STATE, 0); goto out;
     }
     if (((inherited.gctl >> 12) & 3u) != 2u) {
