@@ -79,6 +79,14 @@ archives = [
   "component:SoftwareAES",
   "build-software-aes-bindings.py",
   "build-mockfs-fixture.py",
+  # QcomXnuUsbDebug: USB CDC-ACM debug console, ported from
+  # FFT-infra/QcomXnuUsbDebug@18bcc385 (SM8550 + Darwin22) to this SM8650 +
+  # Darwin23 board.  Sources live next to this entry in scripts/, which
+  # tree.py copies into <tree>/scripts/.  It must come before
+  # build-native-mobile-display.py: that builder runs build-xnu-4k-baseline.sh
+  # itself to produce a kernel image, and the script's archive block does
+  # `test -f libQcomXnuUsbDebug.a`, so the archive has to exist by then.
+  "build-qcom-xnu-usb-debug.py",
   "build-libpthread-kernel.py",
   # Mobile display archive, ported from caihong - the same-SoC reference.
   #
@@ -92,13 +100,6 @@ archives = [
   # Ported as-is apart from one hardcoded path: line 183 now points at
   # kits/tb321fu/MobileDisplayProviderProbe.cpp, and the probe was copied there.
   "build-native-mobile-display.py",
-  # QcomXnuUsbDebug: USB CDC-ACM debug console, ported from
-  # FFT-infra/QcomXnuUsbDebug@18bcc385 (SM8550 + Darwin22) to this SM8650 +
-  # Darwin23 board.  Sources are vendored at vendor/qcom-xnu-usb-debug; the
-  # entry point below is added to the UniXNU tree by
-  # patches/unixnu-qcom-xnu-usb-debug.patch, and it builds against the real
-  # pe_kprintf.o compile record so the archive matches the kernel it links to.
-  "build-qcom-xnu-usb-debug.py",
 ]
 
 # prelink：从 IPSW 的 kernelcache 里把 kext 链进内核。
