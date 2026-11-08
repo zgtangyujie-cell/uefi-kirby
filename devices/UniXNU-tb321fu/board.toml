@@ -30,7 +30,8 @@ kit = "tb321fu"
 # 链接时 libShengUfs.a 会报 vtable for IOBlockStorageDevice 未定义。
 # BSD bdevsw 只用 buf/conf/devfs，内核自带，不依赖任何 kext。
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot"]
+include = ["ArmDTPlatform", "ArmCpu", "SoftwareAES", "XnuPrelink", "DarwinBoot",
+           "GopFramebuffer"]
 
 # 与 caihong / giulia 相同的 SM8650 目标：iPad7,1 / iPadOS 17.7.11 (21H461)。
 # 01-设备输入.md 附录：ADT 会伪造平台身份，IPSW 机型与平板无关，可沿用。
@@ -79,6 +80,17 @@ archives = [
   "build-software-aes-bindings.py",
   "build-mockfs-fixture.py",
   "build-libpthread-kernel.py",
+  # GopFramebuffer and the boot-progress page both need ABI-bound archives, and
+  # those generators (build-gop-legacy-display.py, build-boot-progress.py) live
+  # only in the sheng device repository - the upstream tree has just the
+  # check-*/probe-* verifiers.  Porting those two is a separate step: the first
+  # reads build/display-analysis/mobile-graphics-legacy-abi.json from an audit
+  # of this kernelcache, the second compiles packages/BootProgress.c.
+  #
+  # Until they are ported, enabling the switches without the archives only
+  # compiles the support in; the entry points stay unresolved.  That is
+  # deliberate for this round: it measures whether the switches alone break the
+  # XNU build before any script is added.
 ]
 
 # prelink：从 IPSW 的 kernelcache 里把 kext 链进内核。

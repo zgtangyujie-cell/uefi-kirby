@@ -21,6 +21,11 @@ CONFIG_XNU_CRYPTO_BOOTSTRAP="prelinked"
 # 关掉它，把这条不稳定的链接路径整条去掉。
 # CONFIG_XNU_SOURCE_MOCKFS is not set
 
+# Component recipes and auxiliary archives are only built when this is on; without
+# it build_archives() returns immediately and the GopFramebuffer / boot-progress
+# archives would silently never be produced.  sheng_defconfig:1 sets it.
+CONFIG_XNU_BUILD_ARCHIVES=y
+
 #
 # Display backend, following the official guide (/zh/porting/display) and the
 # reference device sheng (SM8550, configs/sheng_defconfig:16-22):
