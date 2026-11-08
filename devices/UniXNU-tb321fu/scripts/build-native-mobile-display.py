@@ -180,7 +180,13 @@ def compile_probe():
             continue
         if argument == record['file']:
             # Ported from caihong: the file moved to this board's own kit
-            command.append(str(ROOT / 'kits/tb321fu/MobileDisplayProviderProbe.cpp'))
+            # The probe travels with this script: tree.py copies the device
+            # repository's scripts/ into the build tree, so both files always
+            # land together.  Addressing it as kits/<board.kit> would need the
+            # kit directory to be linked into the tree, and this board is
+            # schema_version 2, where only catalogue components get linked -
+            # a device kits/ folder is not.
+            command.append(str(ROOT / 'scripts' / 'MobileDisplayProviderProbe.cpp'))
         elif argument == '-o':
             command.extend(['-o', str(OUT / 'MobileDisplayProviderProbe.o')])
             skip = True
