@@ -20,3 +20,30 @@ CONFIG_XNU_CRYPTO_BOOTSTRAP="prelinked"
 # "mockfs_mountroot / mockfs_vfsops / mockfs_vnodeop_opv_desc" 未定义）。
 # 关掉它，把这条不稳定的链接路径整条去掉。
 # CONFIG_XNU_SOURCE_MOCKFS is not set
+
+#
+# Display backend, following the official guide (/zh/porting/display) and the
+# reference device sheng (SM8550, configs/sheng_defconfig:16-22):
+#
+#   CONFIG_XNU_BOOT_PROGRESS=y          the 48x120 diagnostic page drawn on the
+#                                       XNU framebuffer; level 1 freezes after
+#                                       30 s of no progress, level 2 keeps running
+#   CONFIG_XNU_NATIVE_LEGACY_DISPLAY=y  GopFramebuffer's legacy backend, which
+#                                       takes the framebuffer from
+#                                       PE_current_console (NativeLegacyDisplay.cpp:293)
+#   CONFIG_XNU_NATIVE_MOBILE_DISPLAY=n  the newer MobileFramebuffer path; off for
+#                                       iOS 17 across both boards
+#
+# Until now neither switch existed here, so the kernel had no display backend at
+# all and PE_current_console returned nothing to register - which is the real
+# reason the panel stayed blank, not the console hacks.
+#
+# The switches alone only compile the support in; the archives that provide the
+# actual entry points still have to be wired (build-boot-progress.py and
+# build-gop-legacy-display.py, as sheng board.toml does).  Two stages on purpose:
+# this commit measures whether the switches break the build, then the archives
+# follow.
+#
+CONFIG_XNU_BOOT_PROGRESS=y
+CONFIG_XNU_NATIVE_LEGACY_DISPLAY=y
+CONFIG_XNU_NATIVE_MOBILE_DISPLAY=n
