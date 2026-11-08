@@ -203,6 +203,14 @@ timeout = 0
 # stays in the kernel and still runs its own init; it just is not asked for a
 # root device.  Putting rd=ufsroot0 back is the one-line way to return to the
 # partition route.
+# 注意：uefi-kirby 的 scripts/build.sh 不从这一行读 boot-args。它把静态文件
+# Platforms/Lenovo/kirbyPkg/Resources/payload-tree/EFI/UniXNU/unixnu.toml 的
+# args 写进 payload；改实际的启动参数必须改那个文件。这里保持同步只是为了
+# unixnu 自己的 payload 步骤，两边不要分叉。
+#
+# 两个 USB 参数的语法刻意不同（都是 grep 源码得来的，不是文档）：
+#   -enable_kprintf_spam  带前导减号、不带值（xnu 原生 pe_kprintf.c:49）
+#   qcom-usb-debug=1      不带减号、必须恰好 =1（0002:214 的 enabled != 1 会 return）
 kernel_args = ["-v", "serial=3", "offline-apfs-load=1", "-enable_kprintf_spam", "qcom-usb-debug=1"]
 
 [package]

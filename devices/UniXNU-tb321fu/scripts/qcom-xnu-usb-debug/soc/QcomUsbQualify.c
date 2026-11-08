@@ -498,6 +498,94 @@ QUSB_RESULT QcomUsbRestoreDma(QUSB_READ32 read32, QUSB_WRITE32 write32,
   return QusbQualified;
 }
 
+/* Bounded busy wait for a GDSC or branch-clock ack.  This runs from
+ * PE_init_kprintf, before any timer service exists, so it spins on a volatile
+ * counter instead of reading a clock. */
+static void qualifier_spin(void)
+{
+  volatile unsigned int spins;
+  for (spins = 0; spins < 200; ++spins) {
+  }
+}
+
+/* Bring the USB power domain and its five branch clocks up from an off state.
+ *
+ * The backend was written for a board where firmware hands the kernel a powered
+ * controller: Sm8550.h says "Inherited PHY/power only" and
+ * QcomUsbInspectInherited() therefore only reads.  Under `fastboot boot` that
+ * premise does not hold.  ABL is a loader, not a hand-off, and it stops the USB
+ * it used for fastboot before jumping, so inspection reports
+ * QusbPowerDomainOff / QusbResetAsserted / QusbClockOff and the module gives up
+ * silently -- at that point it has no output channel to say so on.
+ *
+ * This is what Linux's gdsc_enable() plus clk_branch2_enable() do for the same
+ * block, reduced to the sequence this controller needs:
+ *   BCR.BLK_ARES  <- 0           release the block reset
+ *   CFG_GDSCR     <- PWR_ON      request power, poll POWER_UP_COMPLETE (bit 16)
+ *   CBCR[0..4]    <- CLK_ENABLE  poll CLK_OFF (bit 31) clearing on each branch
+ *
+ * `state` holds the values QcomUsbInspectInherited() read, so
+ * QcomUsbRestoreClocks() can put the block back exactly as it was found.
+ */
+QUSB_RESULT QcomUsbResumeClocks(QUSB_READ32 read32, QUSB_WRITE32 write32,
+                                void *cookie, QUSB_INHERITED *state)
+{
+  static const QUSB_U32 cbcr[] = QUD_GCC_CBCR_OFFSETS;
+  unsigned int i, spins;
+  QUSB_U32 value = 0;
+
+  if (!read32 || !write32 || !state) return QusbBadArgument;
+
+  if (!write32(cookie, QUSB_GCC_BASE + QUD_GCC_BCR_OFFSET, state->gcc_bcr & ~1U))
+    return QusbWriteFailed;
+
+  if (!write32(cookie, QUSB_GCC_BASE + QUD_GCC_CFG_GDSCR_OFFSET,
+               state->gcc_cfg_gdscr | 1U))
+    return QusbWriteFailed;
+  for (spins = 0; spins < 1000; ++spins) {
+    if (!read32(cookie, QUSB_GCC_BASE + QUD_GCC_CFG_GDSCR_OFFSET, &value))
+      return QusbReadFailed;
+    if (value & (1U << 16)) break;
+    qualifier_spin();
+  }
+  if (!(value & (1U << 16))) return QusbPowerDomainOff;
+
+  for (i = 0; i < 5; ++i) {
+    if (!write32(cookie, QUSB_GCC_BASE + cbcr[i], state->gcc_cbcr[i] | 1U))
+      return QusbWriteFailed;
+  }
+  for (i = 0; i < 5; ++i) {
+    value = 0x80000000U;
+    for (spins = 0; spins < 1000; ++spins) {
+      if (!read32(cookie, QUSB_GCC_BASE + cbcr[i], &value))
+        return QusbReadFailed;
+      if (!(value & 0x80000000U)) break;
+      qualifier_spin();
+    }
+    if (value & 0x80000000U) return QusbClockTimeout;
+  }
+  return QusbQualified;
+}
+
+/* Put the block back the way QcomUsbInspectInherited() found it. */
+QUSB_RESULT QcomUsbRestoreClocks(QUSB_READ32 read32, QUSB_WRITE32 write32,
+                                 void *cookie, QUSB_INHERITED *state)
+{
+  static const QUSB_U32 cbcr[] = QUD_GCC_CBCR_OFFSETS;
+  unsigned int i;
+
+  if (!read32 || !write32 || !state) return QusbBadArgument;
+  for (i = 0; i < 5; ++i) {
+    if (!write32(cookie, QUSB_GCC_BASE + cbcr[i], state->gcc_cbcr[i]))
+      return QusbWriteFailed;
+  }
+  if (!write32(cookie, QUSB_GCC_BASE + QUD_GCC_CFG_GDSCR_OFFSET, state->gcc_cfg_gdscr))
+    return QusbWriteFailed;
+  if (!write32(cookie, QUSB_GCC_BASE + QUD_GCC_BCR_OFFSET, state->gcc_bcr))
+    return QusbWriteFailed;
+  return QusbQualified;
+}
+
 const char *QcomUsbResultName(QUSB_RESULT result)
 {
   static const char *const names[] = {
