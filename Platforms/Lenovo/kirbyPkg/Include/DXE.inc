@@ -5,6 +5,13 @@
   # 其它一切之前，越早越能反映 ABL 交接时的原始状态。
   INF kirbyPkg/Drivers/SmemProbeDxe/SmemProbeDxe.inf
 
+  # 读 GCC 的 BCR/GDSCR/CFG_GDSCR 和 5 个 CBCR，写进 KLOG，由 QrLogDxe 画成二维码。
+  # 为什么在 UEFI 阶段读：内核里 qcom_usb_debug_init() 拒绝硬件时，唯一的输出通道就是
+  # 那个刚拒绝它的 USB，而 PE_kputc 要等它返回后才指向视频控制台，boot_progress 在这个
+  # UniXNU 版本里又不存在。只读 GCC（常开电源域，读它不会挂总线），不读 DWC3——
+  # 分支时钟被 gate 时读 DWC3 可能 stall 住连接。见 Drivers/UsbStateProbeDxe/。
+  INF kirbyPkg/Drivers/UsbStateProbeDxe/UsbStateProbeDxe.inf
+
   # 把调试日志画成二维码轮播，见 Drivers/QrLogDxe/QrLogDxe.c
   INF kirbyPkg/Drivers/QrLogDxe/QrLogDxe.inf
 

@@ -195,6 +195,15 @@
   kirbyPkg/Drivers/SmemProbeDxe/SmemProbeDxe.inf
 
   #
+  # Reads the GCC registers QcomXnuUsbDebug's inherited-state check looks at,
+  # and appends them to the KLOG buffer so QrLogDxe draws them.  GCC only: it is
+  # in an always-on power domain, so the reads cannot hang, whereas a read of
+  # DWC3 with gated branch clocks can stall the interconnect.
+  # See Drivers/UsbStateProbeDxe/UsbStateProbeDxe.c.
+  #
+  kirbyPkg/Drivers/UsbStateProbeDxe/UsbStateProbeDxe.inf
+
+  #
   # Debug log as QR codes on the panel (no menu, no input, no host tool)
   #
   kirbyPkg/Drivers/QrLogDxe/QrLogDxe.inf

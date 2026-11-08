@@ -1,0 +1,37 @@
+## @file
+#  UsbStateProbeDxe
+#
+#  Diagnostic only: reads the GCC registers that QcomXnuUsbDebug's
+#  QcomUsbInspectInherited() checks, and appends them to the KLOG buffer so
+#  QrLogDxe draws them as a QR frame.
+#
+#  The kernel module refuses the controller silently -- at that point the only
+#  sink is the USB device that just refused -- so the values have to be read one
+#  stage earlier, while UEFI still has a framebuffer.  Only GCC is touched: it
+#  lives in an always-on power domain, so the reads cannot hang.  DWC3 is
+#  deliberately not read (a gated branch clock can stall that read).
+#
+#  Runs before QrLogDxe so the line is in place for its first frame.
+#
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = UsbStateProbeDxe
+  FILE_GUID                      = 4A43EFF5-A2E5-4757-8327-4600525986AC
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = UsbStateProbeEntry
+
+[Sources]
+  UsbStateProbeDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[LibraryClasses]
+  BaseLib
+  UefiDriverEntryPoint
+
+[Depex]
+  TRUE
