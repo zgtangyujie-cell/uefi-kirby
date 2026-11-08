@@ -17,6 +17,54 @@ struct vc_info {
   u64 v_baseaddr;
 };
 
+/*
+ * _vinfo lives in BSS and is only filled by initialize_screen, which does not
+ * produce a usable console on this board (that is why the vc_info guard in
+ * console_printf_main rejects every message and the panel stays blank).  But
+ * PE_state.video is filled unconditionally by PE_init_platform, straight from
+ * boot_args->Video, and DarwinBoot has already put the real numbers there
+ * (measured: base 0xD5100000, 1600x2560, rowBytes 6400, depth 32).
+ *
+ * PE_Video field offsets verified in _initialize_screen's own loads:
+ *   +0x00 base (ldr x), +0x08 rowBytes (ldr w), +0x10 width, +0x18 height,
+ *   +0x20 depth.  Every slot is 8 bytes wide with only the low half read.
+ *
+ * So when PE_VIDEO_ADDR is supplied, read the geometry from there instead of
+ * from _vinfo.  Same four sanity checks, so a bad pointer still draws nothing.
+ */
+#ifdef PE_VIDEO_ADDR
+struct pe_video {
+  u64 base, rowbytes, width, height, depth;
+};
+#endif
+
+static int console_geometry (u8 **base, u32 *rb, u32 *w, u32 *h)
+{
+#ifdef PE_VIDEO_ADDR
+  volatile struct pe_video *pv = (volatile struct pe_video *)PE_VIDEO_ADDR;
+
+  if (pv->base == 0 || pv->depth != 32 || pv->rowbytes == 0 || pv->width < 8) {
+    return 0;
+  }
+  *base = (u8 *)pv->base;
+  *rb   = (u32)pv->rowbytes;
+  *w    = (u32)pv->width;
+  *h    = (u32)pv->height;
+  return 1;
+#else
+  volatile struct vc_info *v = (volatile struct vc_info *)VINFO;
+
+  if (v->v_baseaddr == 0 || v->v_depth != 32 || v->v_rowbytes == 0 || v->v_width < 8) {
+    return 0;
+  }
+  *base = (u8 *)v->v_baseaddr;
+  *rb   = v->v_rowbytes;
+  *w    = v->v_width;
+  *h    = v->v_height;
+  return 1;
+#endif
+}
+
 #define SCALE 2
 
 extern const u64 gFont[];
@@ -208,19 +256,16 @@ static u32 format (struct ctx *g, const char *fmt, const u64 *args)
 
 __attribute__((used, section(".text.b_main"))) u64 console_printf_main (const char *fmt, const u64 *args)
 {
-  volatile struct vc_info *v = (volatile struct vc_info *)VINFO;
   struct ctx g;
   volatile u32 *cursor;
   u32 saved;
 
-  if (fmt == 0 || v->v_baseaddr == 0 || v->v_depth != 32 || v->v_rowbytes == 0 ||
-      v->v_width == 0 || v->v_height < 32) {
+  if (fmt == 0) {
     return 0;
   }
-  g.base = (u8 *)v->v_baseaddr;
-  g.rb   = v->v_rowbytes;
-  g.w    = v->v_width;
-  g.h    = v->v_height;
+  if (!console_geometry (&g.base, &g.rb, &g.w, &g.h)) {
+    return 0;
+  }
 
   /* Cursor lives in the last row: x in the second to last pixel, y in the last. */
   cursor = (volatile u32 *)(g.base + (u64)(g.h - 1) * g.rb + (u64)(g.w - 2) * 4);
@@ -283,22 +328,17 @@ static void store_cursor (struct ctx *g)
 __attribute__((used, section(".text.c_beat"))) void heartbeat_wrapper (void)
 {
   void (*idle) (void) = (void (*) (void)) MACHINE_IDLE;
-  volatile struct vc_info *v = (volatile struct vc_info *)VINFO;
   struct ctx g;
   volatile u32 *slot;
   u32 now, last;
 
   idle ();
 
-  if (v->v_baseaddr == 0 || v->v_depth != 32 || v->v_rowbytes == 0 || v->v_width < 8) {
+  if (!console_geometry (&g.base, &g.rb, &g.w, &g.h)) {
     return;
   }
   now = (u32)(counter () / TIMEBASE);
 
-  g.base = (u8 *)v->v_baseaddr;
-  g.rb   = v->v_rowbytes;
-  g.w    = v->v_width;
-  g.h    = v->v_height;
   slot = (volatile u32 *)(g.base + (u64)(g.h - 1) * g.rb + (u64)(g.w - 3) * 4);
   last = *slot ^ 0x42454154u;
   if (last == 0 || last > now || now - last < HEARTBEAT_SECONDS) {

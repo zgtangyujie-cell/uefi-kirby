@@ -65,7 +65,8 @@ def find_cave(data, near_va):
     raise SystemExit(f"no {CAVE_MIN:#x} byte zero run in an executable segment")
 
 
-def assemble(source, va, workdir, vinfo_va, machine_idle, page_total, page_free):
+def assemble(source, va, workdir, vinfo_va, machine_idle, page_total, page_free,
+             pe_video_va=None):
     brew = "/opt/homebrew/opt/llvm/bin"
     tools = {}
     for name in ("clang", "ld.lld", "llvm-objcopy", "llvm-nm", "llvm-size", "llvm-objdump"):
@@ -77,11 +78,17 @@ def assemble(source, va, workdir, vinfo_va, machine_idle, page_total, page_free)
 
     font_dir = ROOT / "scripts" / "fbconsole"
     obj, elf, binary = (workdir / n for n in ("console.o", "console.elf", "console.bin"))
-    subprocess.run([clang, "--target=aarch64-none-elf", "-ffreestanding", "-fno-builtin",
-                    "-fno-stack-protector", "-mgeneral-regs-only", "-fno-pic", "-mcmodel=tiny",
-                    "-Oz", f"-DVINFO={vinfo_va:#x}UL", f"-DMACHINE_IDLE={machine_idle:#x}UL",
-                    f"-DPAGE_TOTAL={page_total:#x}UL", f"-DPAGE_FREE={page_free:#x}UL", f"-I{font_dir}", "-c", source,
-                    "-o", obj], check=True)
+    flags = ["--target=aarch64-none-elf", "-ffreestanding", "-fno-builtin",
+             "-fno-stack-protector", "-mgeneral-regs-only", "-fno-pic", "-mcmodel=tiny",
+             "-Oz", f"-DVINFO={vinfo_va:#x}UL", f"-DMACHINE_IDLE={machine_idle:#x}UL",
+             f"-DPAGE_TOTAL={page_total:#x}UL", f"-DPAGE_FREE={page_free:#x}UL"]
+    if pe_video_va is not None:
+        # Read geometry from PE_state.video instead of _vinfo.  _vinfo is BSS and
+        # only filled by initialize_screen, which does not produce a usable
+        # console on this board; PE_state.video is set unconditionally from
+        # boot_args->Video, and DarwinBoot has already validated those numbers.
+        flags.append(f"-DPE_VIDEO_ADDR={pe_video_va:#x}UL")
+    subprocess.run([clang, *flags, f"-I{font_dir}", "-c", source, "-o", obj], check=True)
     sizes = subprocess.run([size, "--format=berkeley", obj], capture_output=True, text=True,
                            check=True).stdout.splitlines()[-1].split()
     if int(sizes[1]) or int(sizes[2]):
@@ -141,9 +148,21 @@ def main():
     call_va, callee = probe.find_call(data, table, "_processor_idle", "_machine_idle", 1)
 
     cave = find_cave(data, printf_va)
+    #
+    # PE_state.video (+0x08) is filled unconditionally by PE_init_platform from
+    # boot_args->Video, and DarwinBoot already validated those values against
+    # the real display.  Prefer it over _vinfo, which is BSS and stays zero
+    # because initialize_screen never produces a console on this board.
+    # _PE_state moves under prelink (measured 0xFFFFFFF0071FC828 at 19.1 MiB,
+    # 0xFFFFFFF0071FC8D0 at 49.3 MiB), so it must come from the symbol table.
+    pe_state = symbols.get("_PE_state")
+    pe_video = pe_state + 8 if pe_state else None
+    if pe_video is None:
+        print("warning: no _PE_state; console will read _vinfo (likely zero here)")
     with tempfile.TemporaryDirectory() as tmp:
         code, load, entry, beat = assemble(ROOT / "scripts" / "xnu-console.c", cave, Path(tmp), vinfo_va,
-                                           callee, symbols["_vm_page_pages"], symbols["_vm_page_free_count"])
+                                           callee, symbols["_vm_page_pages"], symbols["_vm_page_free_count"],
+                                           pe_video_va=pe_video)
     if load + len(code) > cave + CAVE_MIN:
         raise SystemExit(f"console code is {len(code):#x} bytes, the cave holds {CAVE_MIN:#x}")
     if any(data[probe.file_offset(load):probe.file_offset(load) + len(code)]):

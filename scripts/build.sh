@@ -331,47 +331,40 @@ fi
 # offset 59, nothing compressed, so scripts/make-ramdisk.py can rebuild it from
 # the IPSW without lzfse when this branch is stale.
 #
+#
+# Diagnostic build: a 1 MiB placeholder instead of the 176 MiB container.
+#
+# Two independent walls were measured on real hardware on 2026-11-08:
+#
+#   boot.img 139 MiB (the real 176 MiB container) -> Booting OKAY, then the
+#       tablet drops to the charging screen.  ABL never reached UEFI.
+#   boot.img 9 MiB (240 MiB payload, 176 MiB of zeroes inside) -> Booting OKAY,
+#       then the firmware died after 124 s and ABL returned to fastboot.
+#
+# The second is the informative one: the gzip stream was small enough that ABL
+# accepted it, yet the firmware still died, which points at the 240 MiB payload
+# volume rather than at the boot image size.  KirbyInitrdDxe publishes that
+# volume out of the kernel window, and 240 MiB is far past the 64 MiB that has
+# always worked here.
+#
+# So this build asks a different question: with a payload the firmware is known
+# to accept, does the console finally draw the kernel's own log?  The ramdisk is
+# 1 MiB of zeroes - enough for memory-map/RAMDisk to be filled and for
+# IOFindBSDRoot to be reached, but not an APFS container, so the mount is
+# expected to fail.  That failure message is the whole point: it proves the
+# console path works, and then the container can come back at a size the
+# firmware tolerates.
+#
 RAMDISK_TMP="$WORK/restore_apfs.img"
-if git -C "$ROOT" fetch -q --depth 1 origin ramdisk-out 2>/dev/null; then
-  rm -f "$RAMDISK_TMP"
-  _parts=0
-  for _index in 000 001 002 003; do
-    if git -C "$ROOT" show "FETCH_HEAD:restore_apfs.img.$_index" >> "$RAMDISK_TMP" 2>/dev/null; then
-      _parts=$((_parts + 1))
-    else
-      break
-    fi
-  done
-  if [ "$_parts" -gt 0 ] && [ "$(head -c 4 "$RAMDISK_TMP")" = "NXSB" ]; then
-    #
-    # Pad to a 4 KiB boundary.  Dense mode does not need it: RamdiskLayout
-    # returns TRUE as soon as the DBRDISK1 magic is absent, and this volume
-    # declares RAMDisk, not PackedRAMDisk, because board.toml has no
-    # packed_data_ramdisk.  packed_ramdisk.py does require logical % PAGE == 0
-    # though, and the container is 184,549,344 bytes (4064 past a page), so the
-    # pad costs 32 zero bytes now and removes a trap if packed is ever enabled.
-    #
-    python3 - "$RAMDISK_TMP" <<'PY'
+rm -f "$RAMDISK_TMP"
+python3 - "$RAMDISK_TMP" <<'PY'
 import sys
 from pathlib import Path
-p = Path(sys.argv[1])
-data = p.read_bytes()
-pad = -len(data) % 4096
-if pad:
-    with p.open('ab') as f:
-        f.write(bytes(pad))
-print(f"ramdisk: {len(data)} -> {len(data) + pad} bytes ({pad} bytes of page padding)")
+Path(sys.argv[1]).write_bytes(bytes(1 << 20))
+print("ramdisk: 1 MiB of zeroes (diagnostic placeholder, not a container)")
 PY
-    log "ramdisk from ramdisk-out: $_parts part(s), $(wc -c < "$RAMDISK_TMP") bytes"
-  else
-    rm -f "$RAMDISK_TMP"
-    log "ramdisk-out present but did not reassemble into an APFS container; booting without one"
-  fi
-else
-  log "no ramdisk-out branch; booting without a root ramdisk"
-fi
 PAYLOAD_ARGS=(--output Platforms/Lenovo/kirbyPkg/Resources/payload.bin
-              --size-mib 240 --cluster-sectors 8 --label TB321FUESP
+              --size-mib 64 --cluster-sectors 8 --label TB321FUESP
               --add "EFI/UniXNU/unixnu.toml=Platforms/Lenovo/kirbyPkg/Resources/payload-tree/EFI/UniXNU/unixnu.toml")
 if [ -s "$KERNEL_TMP" ]; then
   PAYLOAD_ARGS+=(--add "EFI/UniXNU/Payloads/kernel.macho=$KERNEL_TMP")
