@@ -33,9 +33,17 @@
  * 0x39008 here and matches Sm8550.h.  The module only reads bit 16 of it to
  * confirm the USB GDSC is already powered by firmware.
  *
- * `QUD_PSCI_SMC_RESET` is 0 because this board's PSCI SYSTEM_RESET through
- * SMC has never been qualified.  docs/porting-other-socs.md:41 requires 0
- * until it is; the reboot path then reports an error instead of resetting.
+ * `QUD_PSCI_SMC_RESET` is 1: this board's PSCI SYSTEM_RESET through SMC is
+ * qualified by the diagnostic reset already used for probe images.
+ * scripts/patch-xnu-entry-probe.py injects exactly
+ *     movz w0, #9 / movk w0, #0x8400, lsl #16 / mov x1,xzr / mov x2,xzr /
+ *     mov x3,xzr / smc #0
+ * and that image reset the tablet after 122 s and again after 137 s, so the
+ * conduit (SMC, not HVC) and ATF's SYSTEM_RESET both answer on this board.
+ * kernel/QcomXnuUsbDebug.c:platform_smc_reset() issues the same sequence with
+ * one extra `dsb sy`, so the module's reboot path is the path already measured.
+ * Installing it still only happens when PE_halt_restart is NULL, so it can
+ * never displace another owner.
  *
  * Inherited PHY/power only, exactly like Sm8550.h: firmware has already
  * brought the controller up in DEVICE mode, and this header only tells the
@@ -64,6 +72,6 @@
 #define QUD_GCC_CFG_GDSCR_OFFSET 0x39008u
 #define QUD_QSCRATCH_HS_PHY_CTRL_OFFSET 0xf8810u
 #define QUD_QSCRATCH_VBUS_MASK ((1u << 20) | (1u << 28))
-/* Only set after the board's PSCI SYSTEM_RESET through SMC is qualified. */
-#define QUD_PSCI_SMC_RESET 0
+/* Qualified by the diagnostic SMC reset measured on this board; see above. */
+#define QUD_PSCI_SMC_RESET 1
 #endif
