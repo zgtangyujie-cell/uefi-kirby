@@ -150,12 +150,46 @@ def main():
         raise SystemExit("the chosen padding is not empty")
 
     data[probe.file_offset(load):probe.file_offset(load) + len(code)] = code
-    struct.pack_into("<I", data, probe.file_offset(printf_va), probe.branch(printf_va, entry))
+    #
+    # Two entry points, not one.  printf() is only half the story: XNU's own
+    # start-up chatter goes through kprintf(), which reaches the log ring
+    # through _doprnt_log and _os_log_with_args and never touches printf at all.
+    # Measured on the 51,695,616-byte kernel:
+    #
+    #   _printf   -> _vprintf_internal
+    #   _vprintf  -> _vprintf_internal
+    #   _kprintf  -> _doprnt_log, _os_log_with_args      (no printf on the path)
+    #
+    # With only printf() hooked, a kernel that printed thousands of lines left
+    # the panel blank - which is exactly what the 08:31 boot did.  kprintf takes
+    # its variadic arguments on the stack the same way, so the same trampoline
+    # (mov x1, sp; b console_printf_main) works for both, and its ret returns to
+    # kprintf's caller as the caller expects.
+    #
+    hooked = []
+    for name in ("_printf", "_kprintf"):
+        va = names.get(name)
+        if va is None:
+            continue
+        where = probe.file_offset(va)
+        current = struct.unpack_from("<I", data, where)[0]
+        target = probe.branch(va, entry)
+        if current == target:
+            hooked.append(f"{name}@{va:#x} (already)")
+            continue
+        # Both are ordinary prologues such as `sub sp, sp, #0x20`; anything that
+        # already looks like a branch means a different patch owns the site.
+        if (current >> 26) & 0x3F in (0x05, 0x25):
+            raise SystemExit(f"{name} at {va:#x} already holds a branch ({current:#010x}); refusing to fight over it")
+        struct.pack_into("<I", data, where, target)
+        hooked.append(f"{name}@{va:#x}")
+    if not hooked:
+        raise SystemExit("neither _printf nor _kprintf could be hooked")
     # bl <heartbeat>: keep the call to machine_idle, then tick
     delta = (beat - call_va) >> 2
     struct.pack_into("<I", data, probe.file_offset(call_va), 0x94000000 | (delta & 0x3FFFFFF))
     kernel.write_bytes(data)
-    print(f"patched {kernel.name}: printf() at {printf_va:#x} -> console at {entry:#x}; "
+    print(f"patched {kernel.name}: {' '.join(hooked)} -> console at {entry:#x}; "
           f"idle call at {call_va:#x} -> heartbeat at {beat:#x} ({len(code):#x} bytes)")
 
 
