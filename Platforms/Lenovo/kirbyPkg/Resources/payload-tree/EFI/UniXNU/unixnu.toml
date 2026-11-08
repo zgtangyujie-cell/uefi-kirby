@@ -32,5 +32,16 @@ title = "XNU"
 type = "xnu"
 path = "Payloads/kernel.macho"
 initrd = "Payloads/restore_apfs.img"
-args = "-v"
+# offline-mobile-graphics-load / -client are the two boot args this kernel
+# actually implements (verified against the kernel string table).  They gate
+# native_mobile_graphics_load_probe and the provider probe that is nested
+# inside native_mobile_graphics_client_probe, so neither runs without them.
+#
+# rd=md0 is deliberately absent for now: the payload carries a 1 MiB placeholder
+# instead of a real APFS container, and asking the kernel to mount md0 before
+# that exists risks parking it on a device wait instead of failing cleanly.
+# The 176 MiB container cannot go in yet either: measured on the tablet, a
+# 240 MiB payload volume kills the firmware 124 s in, and a 139 MiB boot image
+# never reaches UEFI at all.
+args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1"
 enabled = true

@@ -375,6 +375,23 @@ fi
 if [ -s "$RAMDISK_TMP" ]; then
   PAYLOAD_ARGS+=(--add "EFI/UniXNU/Payloads/restore_apfs.img=$RAMDISK_TMP")
 fi
+#
+# DarwinBoot reads <KernelPath>.trustcache and rejects the boot with
+# EFI_COMPROMISED_DATA when the ADT declares a TrustCache mapping but no such
+# file exists (DarwinBoot.c:671-681).  The ADT carries that mapping because
+# gen-adt.py runs with --trust, so this file has to be in every payload - a
+# build without it boots straight into "Kernel '<XNU>' returned: CompromisedData".
+#
+# The 59,504-byte file is the IPSW's RestoreTrustCache, unchanged; it is
+# committed under Resources/ because the CI job never fetches the IPSW.
+#
+TRUSTCACHE_SRC="$ROOT/Resources/payload/kernel.macho.trustcache"
+if [ -s "$TRUSTCACHE_SRC" ]; then
+  PAYLOAD_ARGS+=(--add "EFI/UniXNU/Payloads/kernel.macho.trustcache=$TRUSTCACHE_SRC")
+  log "trustcache: $(wc -c < "$TRUSTCACHE_SRC") bytes"
+else
+  log "trustcache: missing at $TRUSTCACHE_SRC; the kernel entry will be refused"
+fi
 python3 "$ROOT/scripts/mkpayload.py" "${PAYLOAD_ARGS[@]}"
 
 #
