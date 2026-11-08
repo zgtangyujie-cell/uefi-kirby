@@ -583,19 +583,30 @@ else
 fi
 
 #
-# vcputc refuses to draw unless BSS dword 0xfffffff007b20e04 is non-zero:
+# vcputc_options (0xfffffff0073be73c) refuses to draw unless BOTH gates pass.
+# Verified by disassembling _kernel_latest.macho on 2026-11-08:
 #
-#   0xfffffff0073be7b0  ldr w8, [x19, #0xe04]
-#   0xfffffff0073be7b4  cbz w8, 0xfffffff0073bedb0     <- no draw
+#   0xfffffff0073be75c  adrp  x8,  #0xfffffff007b20000
+#   0xfffffff0073be760  ldrb  w8,  [x8,  #0xe00]   <- gc_initialized @ 0xB20E00
+#   0xfffffff0073be764  adrp  x19, #0xfffffff007b20000
+#   0xfffffff0073be768  ldr   w9,  [x19, #0xe04]   <- gc_enabled     @ 0xB20E04
+#   0xfffffff0073be76c  cmp   w8, #1
+#   0xfffffff0073be770  ccmp  w9, #0, #4, eq
+#   0xfffffff0073be774  b.ne  0xfffffff0073be798
 #
-# The only writer is vc_progress_set (0xfffffff0073c1340):
-#   eor w8, w20, #1 ; str w8, [x9, #0xe04]
-# and that path only runs when the progress bar timer is armed, which needs
-# _PE_initialize_console -- a function with zero call sites in this kernel.
-# So the gate stays at its BSS value 0 and every printf is swallowed.
+# b.ne is only taken when gc_initialized == 1 AND gc_enabled != 0.  If either
+# one fails the flags end up Z=1, b.ne is NOT taken, and the function falls
+# straight into its epilogue -- it returns without drawing a single pixel.
+# (There is a second, redundant cbz on gc_enabled at 0xfffffff0073be7b4.)
 #
-# Set it once from DarwinBoot, before ExitBootServices.  Address:
-#   PA = Address + (0xFFFFFFF007B20E04 - Kernel.Base)
+# Neither gate is ever written in this kernel: the only writer is
+# vc_progress_set, and that path needs the progress-bar timer armed, which
+# needs _PE_initialize_console -- a function with zero call sites here.
+# So both stay at their BSS value 0 and every printf is swallowed.
+# Seeding only gc_enabled (the old one-line patch) changes nothing, because
+# the first cmp on gc_initialized already failed before gc_enabled is looked
+# at.  Both must be seeded, from DarwinBoot, before ExitBootServices:
+#   PA = Address + (0xFFFFFFF007B20E00 - Kernel.Base)   (and ...B20E04)
 #
 if [ -f "$DARWINBOOT_C" ]; then
   python3 -c '
@@ -603,15 +614,15 @@ import sys
 from pathlib import Path
 p = Path(sys.argv[1])
 t = p.read_text()
-if "kirby: open the vcputc gate" in t:
+if "0xFFFFFFF007B20E00ULL" in t:
     sys.exit(0)
 needle = "DiagDraw (KirbyDiag, 6); }"
 if needle not in t:
     sys.exit("KirbyDiag paint block not found in DarwinBoot.c")
-gate = "\n  /* kirby: open the vcputc gate (b20e04) */\n  *(volatile UINT32 *)(UINTN)(Address + (0xFFFFFFF007B20E04ULL - Kernel.Base)) = 1;"
+gate = "\n  /* kirby: open the vcputc gates -- BOTH, verified 2026-11-08 */\n  /* gc_initialized @ 0xB20E00: cmp w8,#1 must hold */\n  *(volatile UINT32 *)(UINTN)(Address + (0xFFFFFFF007B20E00ULL - Kernel.Base)) = 1;\n  /* gc_enabled @ 0xB20E04: ccmp w9,#0 must not be equal */\n  *(volatile UINT32 *)(UINTN)(Address + (0xFFFFFFF007B20E04ULL - Kernel.Base)) = 1;"
 t = t.replace(needle, needle + gate, 1)
 p.write_text(t)
-print("DarwinBoot: opens the vcputc gate at b20e04")
+print("DarwinBoot: opens the vcputc gates at b20e00 + b20e04")
 ' "$DARWINBOOT_C" || { log "DarwinBoot vcputc gate patch failed"; exit 1; }
 fi
 
