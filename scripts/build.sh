@@ -259,8 +259,25 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       # the deliberate 30 s wait makes the two distinguishable by time: a probe
       # reset moves ~24 s later, a panic restart does not move at all.
       #
+      # Round 2026-11-08 19:07 (image sha256 888aaa5f, kernel +98,304 B with
+      # QcomXnuUsbDebug linked in) proved the kernel never reaches the USB
+      # sink: the tablet came back to adb 2-3 min later with no 1209:316d
+      # enumeration at all.  arm_init.c order is
+      #   522 arm_vm_init
+      #   525 patch_low_glo          (only when debug_boot_arg is non-zero)
+      #   532 PE_consistent_debug_inherit
+      #   535 serial_init
+      #   536 kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF)  <- PE_init_kprintf
+      #   577 PE_create_console
+      # so the previous checkpoint (before _PE_create_console, line 577) sits
+      # four calls too late to say anything.  Move it to _PE_consistent_debug_inherit,
+      # which is an unconditional `bl`: a reset here means arm_vm_init and
+      # patch_low_glo both returned, and no reset means the death is in one of
+      # those two.  --reset-before keeps the signal independent of whether the
+      # function itself returns.
+      #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _PE_create_console --in _arm_init --reset-before --reset-delay 6 ||
+        --reset-after _PE_consistent_debug_inherit --in _arm_init --reset-before --reset-delay 6 ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
