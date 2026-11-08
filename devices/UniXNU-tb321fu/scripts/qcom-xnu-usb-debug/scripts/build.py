@@ -13,7 +13,10 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 UNITS = ('kernel/QcomXnuUsbDebug.c', 'kernel/QcomUsbScreenshot.c',
          'usb/Dwc3.c', 'soc/QcomUsbQualify.c',
-         'soc/QcomUsbDmaDomain.c')
+         'soc/QcomUsbDmaDomain.c',
+         # Weak definitions for the board-optional hooks; weak_import alone does
+         # not satisfy a statically linked kernel (see the file's header).
+         'compat/QcomUsbOptionalHooks.c')
 
 
 def compile_flags(record):
