@@ -54,5 +54,18 @@ initrd = "Payloads/restore_apfs.img"
 #   qcom-usb-debug=1      0002-qcom-usb-debug-worker.patch:214, which returns
 #                         unless the value is exactly 1.  Without it the module
 #                         never touches the controller.
-args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1"
+#
+# qcom-usb-diag=2 is the calibration half of the only readout that survives this
+# board's constraints (no UART, no adb under XNU, no camera at night, and a hard
+# rule against writing any partition).  In qcom_usb_debug_init()
+# (QcomXnuUsbDebug.c:736-752) mode 2 calls diag_reset(0) at the very top, before
+# acquire(); diag_reset uses PSCI SYSTEM_RESET (w0 = 0x84000009), so the tablet
+# resets immediately and the host learns two things from one boot:
+#   * the kernel really did reach PE_init_kprintf (otherwise the timing is the
+#     ~130 s watchdog instead, which is a completely different answer);
+#   * the fixed offset from "fastboot boot returned" to that point.
+# The next run uses qcom-usb-diag=1, which on refusal resets after
+# 12 + 4*native.status.error seconds, so error = (T1 - T2 - 12) / 4 names the
+# exact failing check.  Nothing is written anywhere: only a reset delay.
+args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1 qcom-usb-diag=2"
 enabled = true

@@ -195,13 +195,19 @@
   kirbyPkg/Drivers/SmemProbeDxe/SmemProbeDxe.inf
 
   #
-  # Reads the GCC registers QcomXnuUsbDebug's inherited-state check looks at,
-  # and appends them to the KLOG buffer so QrLogDxe draws them.  GCC only: it is
-  # in an always-on power domain, so the reads cannot hang, whereas a read of
-  # DWC3 with gated branch clocks can stall the interconnect.
-  # See Drivers/UsbStateProbeDxe/UsbStateProbeDxe.c.
+  # DISABLED 2026-11-08 22:52.  This driver called gBS->Stall while it was still
+  # ordered before ArmPkg/Drivers/TimerDxe/TimerDxe.inf (the Timer Arch Protocol
+  # provider), so the stall ran with no timer protocol present.  The image that
+  # first contained it (469e1e1) hung inside the DxeCore dispatch loop: the panel
+  # stopped at the GCD dump, BDS/UniXNU/DarwinBoot never ran, and UEFI has no
+  # watchdog, so the tablet needed a manual power cycle to recover.
   #
-  kirbyPkg/Drivers/UsbStateProbeDxe/UsbStateProbeDxe.inf
+  # The GCC state it wanted is now read from the kernel instead, where
+  # qcom_usb_debug_init() reports its refusal as a PSCI reset delay
+  # (qcom-usb-diag=N, QcomXnuUsbDebug.c:752/975).  That path touches no UEFI
+  # MMIO, calls no early boot service and writes no partition.
+  #
+  # kirbyPkg/Drivers/UsbStateProbeDxe/UsbStateProbeDxe.inf
 
   #
   # Debug log as QR codes on the panel (no menu, no input, no host tool)

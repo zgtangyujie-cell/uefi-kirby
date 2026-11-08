@@ -5,12 +5,20 @@
   # 其它一切之前，越早越能反映 ABL 交接时的原始状态。
   INF kirbyPkg/Drivers/SmemProbeDxe/SmemProbeDxe.inf
 
-  # 读 GCC 的 BCR/GDSCR/CFG_GDSCR 和 5 个 CBCR，写进 KLOG，由 QrLogDxe 画成二维码。
-  # 为什么在 UEFI 阶段读：内核里 qcom_usb_debug_init() 拒绝硬件时，唯一的输出通道就是
-  # 那个刚拒绝它的 USB，而 PE_kputc 要等它返回后才指向视频控制台，boot_progress 在这个
-  # UniXNU 版本里又不存在。只读 GCC（常开电源域，读它不会挂总线），不读 DWC3——
-  # 分支时钟被 gate 时读 DWC3 可能 stall 住连接。见 Drivers/UsbStateProbeDxe/。
-  INF kirbyPkg/Drivers/UsbStateProbeDxe/UsbStateProbeDxe.inf
+  # 已停用 2026-11-08 22:52：这个驱动是 469e1e1 那次挂死的唯一嫌疑，而且排位是构造性错误。
+  # 它在 DXE.inc 第 13 行，却调用 gBS->Stall，而提供 Timer Arch Protocol 的
+  # ArmPkg/Drivers/TimerDxe/TimerDxe.inf 在第 44 行 —— 调用时定时器协议还不存在。
+  # 后果不是「不生效」，是整机停在 DxeCore 派发循环里：屏幕停在 GCD dump，
+  # BDS 没到、UniXNU 没到、DarwinBoot 没到，而且 UEFI 阶段没有看门狗，
+  # 平板不会自己复位，只能人工长按电源键救回来。这个代价不能接受。
+  #
+  # 它想拿的 GCC 状态改由内核侧拿，而且更准：qcom_usb_debug_init() 本来就有
+  # `qcom-usb-diag=N` 诊断模式，失败时用 PSCI SYSTEM_RESET 把 native.status.error
+  # 编码成 12 + 4*error 秒的复位延迟（QcomXnuUsbDebug.c:752/975），
+  # 主机只测「fastboot boot 返回到设备回来」的时长即可读到失败码。
+  # 这条路上没有 UEFI 阶段的 MMIO 访问、没有早期 boot service、不写任何分区。
+  #
+  # INF kirbyPkg/Drivers/UsbStateProbeDxe/UsbStateProbeDxe.inf
 
   # 把调试日志画成二维码轮播，见 Drivers/QrLogDxe/QrLogDxe.c
   INF kirbyPkg/Drivers/QrLogDxe/QrLogDxe.inf
