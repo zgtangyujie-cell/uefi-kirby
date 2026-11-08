@@ -487,7 +487,16 @@ fi
 # branch.  The symbol comes from LC_SYMTAB: prelink moves _PE_state by 0xA8
 # between builds.
 #
-if [ -f "$DARWINBOOT_C" ]; then
+# KirbyPeVideo disabled for one isolation round.
+#
+# The 10:44 boot (J2, probe + seed + trustcache) dropped to the charging screen
+# 94 seconds in, while I2 (noreset, same seed) came back in Android at three
+# minutes.  Writing five words at Address + (PeVideo - Kernel.Base) is only safe
+# if that arithmetic is right, and the address is derived from a Mach-O symbol
+# rather than measured.  Turning the seed off answers a single question: does
+# the charging screen follow the seed, or was it already there?
+#
+if false; then
   python3 "$ROOT/scripts/patch-darwinboot-pe-video.py" "$DARWINBOOT_C" ||
     { log "DarwinBoot PE_state.video seed failed"; exit 1; }
 fi
