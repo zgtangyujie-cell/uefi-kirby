@@ -275,16 +275,23 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       # now makes it return 0, which is also the truthful answer for a board
       # with no UART.
       #
-      # So this build carries NO reset checkpoint.  --no-reset keeps the stage
-      # 1/2 colour bars and still rewrites _start (the check below verifies
-      # that) but installs neither stage 3 nor stage 4, so nothing restarts the
-      # tablet early.  The signal for this round is the USB sink itself: if the
-      # kernel reaches PE_init_kprintf, 1209:316d enumerates and kprintf lands
-      # on the wire; if it dies earlier there is nothing and the watchdog
-      # brings adb back in ~130 s.
+      # Round 19:26 (image f6a4b9f6) also no-op'd serial_init, verified offline
+      # before flashing (_serial_init = 0x52800000 0xd65f03c0), and the USB sink
+      # still produced zero bytes: `collect: no 1209:316d port within 420s`.
+      # Both walls in the 532..536 window are therefore gone, and two questions
+      # remain: (a) is kernel_startup_initialize_upto() at line 536 reached at
+      # all, and (b) if it is, does qcom_usb_debug_init() inside
+      # PE_init_kprintf refuse the hardware?  (b) is silent by construction:
+      # the only sink at that moment is the USB device that just refused.
+      #
+      # This round answers (a).  Checkpoint just before the line-536 call:
+      # a 2 s round trip means arm_init got past serial_init and the problem is
+      # inside PE_init_kprintf; the watchdog means something still dies in the
+      # window we thought was clean.  serial_init stays no-op'd so the
+      # checkpoint is reachable at all.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --no-reset ||
+        --reset-after _kernel_startup_initialize_upto --in _arm_init --reset-before ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
