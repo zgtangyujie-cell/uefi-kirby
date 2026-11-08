@@ -43,5 +43,16 @@ initrd = "Payloads/restore_apfs.img"
 # The 176 MiB container cannot go in yet either: measured on the tablet, a
 # 240 MiB payload volume kills the firmware 124 s in, and a 139 MiB boot image
 # never reaches UEFI at all.
-args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1"
+#
+# QcomXnuUsbDebug needs both of these, and their spellings are deliberately
+# different (grep of the sources, not the docs):
+#   -enable_kprintf_spam  xnu's own pe_kprintf.c:49 under #elif DEVELOPMENT.
+#                         The leading dash is part of the name and it takes no
+#                         value; without it a DEVELOPMENT kernel leaves
+#                         disable_kprintf_output true and kprintf is gated off,
+#                         so the USB sink would receive nothing.
+#   qcom-usb-debug=1      0002-qcom-usb-debug-worker.patch:214, which returns
+#                         unless the value is exactly 1.  Without it the module
+#                         never touches the controller.
+args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1"
 enabled = true
