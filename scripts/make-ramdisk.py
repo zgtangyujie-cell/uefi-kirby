@@ -72,6 +72,16 @@ def main() -> int:
         print(f"short write: {size} != {expected}", file=sys.stderr)
         return 1
 
+    # Pad to 4 KiB.  The container is 184,549,344 bytes, which is 4064 short of
+    # a page; dense mode tolerates that (no DBRDISK1 magic means RamdiskLayout
+    # returns immediately) but packed_ramdisk.py rejects a logical size that is
+    # not page aligned, so padding here keeps both modes usable.
+    pad = -size % 4096
+    if pad:
+        with args.output.open("ab") as append:
+            append.write(bytes(pad))
+        size += pad
+
     with args.output.open("rb") as check:
         magic = check.read(4)
         block_size = int.from_bytes(check.read(4), "little")

@@ -343,6 +343,25 @@ if git -C "$ROOT" fetch -q --depth 1 origin ramdisk-out 2>/dev/null; then
     fi
   done
   if [ "$_parts" -gt 0 ] && [ "$(head -c 4 "$RAMDISK_TMP")" = "NXSB" ]; then
+    #
+    # Pad to a 4 KiB boundary.  Dense mode does not need it: RamdiskLayout
+    # returns TRUE as soon as the DBRDISK1 magic is absent, and this volume
+    # declares RAMDisk, not PackedRAMDisk, because board.toml has no
+    # packed_data_ramdisk.  packed_ramdisk.py does require logical % PAGE == 0
+    # though, and the container is 184,549,344 bytes (4064 past a page), so the
+    # pad costs 32 zero bytes now and removes a trap if packed is ever enabled.
+    #
+    python3 - "$RAMDISK_TMP" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+data = p.read_bytes()
+pad = -len(data) % 4096
+if pad:
+    with p.open('ab') as f:
+        f.write(bytes(pad))
+print(f"ramdisk: {len(data)} -> {len(data) + pad} bytes ({pad} bytes of page padding)")
+PY
     log "ramdisk from ramdisk-out: $_parts part(s), $(wc -c < "$RAMDISK_TMP") bytes"
   else
     rm -f "$RAMDISK_TMP"
