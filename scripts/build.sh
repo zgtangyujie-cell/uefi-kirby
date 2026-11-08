@@ -137,6 +137,17 @@ cp -r "$ROOT/Platforms/Lenovo/kirbyPkg" Platforms/Lenovo/
 cp    "$ROOT/Resources/Configs/kirby.toml" Resources/Configs/
 
 #
+# The cached tree keeps Build/ from the previous run, and stuart's AutoGen does
+# not notice an INF that was added to kirby.dsc: run 42481194373 reported
+# "Build total time: 00:00:16" and its log listed QrLogDxe but never
+# UsbStateProbeDxe, so the new driver was simply absent from the image while the
+# build called itself successful.  Drop kirbyPkg's own build outputs so the DSC
+# is re-parsed; Mu-Silicium's objects stay cached, and a kirbyPkg-only rebuild is
+# still only a couple of minutes.
+#
+rm -rf Build/kirbyPkg
+
+#
 # Build the UniXNU payload volume.
 #
 # 8 MiB FAT16, one file: EFI/UniXNU/unixnu.toml.  FAT16 rather than the FAT12
