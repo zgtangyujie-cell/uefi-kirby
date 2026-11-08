@@ -472,6 +472,27 @@ print("DarwinBoot: paints video0/1/2 before ExitBootServices")
 fi
 
 #
+# KirbyPeVideo: hand the kernel the panel geometry it cannot find itself.
+#
+# Measured on the 51,695,616-byte kernel this board builds: nothing writes
+# PE_state.video or PE_state.boot_args.  adrp+add+str, movz/movk constant builds
+# and direct str-to-[adrp,#off] were all scanned and all came back empty.  The
+# only reference to PE_state.video is _PE_create_console forwarding the address
+# to _initialize_screen, so _initialize_screen sees an all-zero PE_Video, leaves
+# _vinfo zero, and every console guard refuses - a kernel that runs for 130
+# seconds paints nothing.
+#
+# DarwinBoot already holds the real numbers (Video[] from GOP, printed at
+# hand-off), so write PE_Video into the kernel's own address space before the
+# branch.  The symbol comes from LC_SYMTAB: prelink moves _PE_state by 0xA8
+# between builds.
+#
+if [ -f "$DARWINBOOT_C" ]; then
+  python3 "$ROOT/scripts/patch-darwinboot-pe-video.py" "$DARWINBOOT_C" ||
+    { log "DarwinBoot PE_state.video seed failed"; exit 1; }
+fi
+
+#
 # vcputc refuses to draw unless BSS dword 0xfffffff007b20e04 is non-zero:
 #
 #   0xfffffff0073be7b0  ldr w8, [x19, #0xe04]
