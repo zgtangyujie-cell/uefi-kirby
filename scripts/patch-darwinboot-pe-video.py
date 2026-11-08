@@ -74,9 +74,18 @@ KirbyFindSymbol (
       if ((SymOff + Symbols * 16 > Size) || (StrOff + StrSize > Size)) { return FALSE; }
       for (Symbol = 0; Symbol < Symbols; Symbol++) {
         UINTN        StrX = ReadUnaligned32 ((CONST UINT32 *)(Data + SymOff + Symbol * 16));
+        UINT8        Type = *(CONST UINT8 *)(Data + SymOff + Symbol * 16 + 4);
         CONST CHAR8  *Text;
 
         if (StrX >= StrSize) { continue; }
+        //
+        // Skip N_UNDF.  _PE_state appears twice in this kernel's symtab: index
+        // 249883 is undefined with value 0, index 253359 is N_SECT with the real
+        // 0xFFFFFFF0071FC8D0.  Returning the first match handed DarwinBoot a
+        // zero, its range check rejected it, and the seed silently wrote nothing
+        // (measured: the panel read "seed: PE_state 0 bas...").
+        //
+        if ((Type & 0x0e) == 0x00) { continue; }
         Text = (CONST CHAR8 *)(Data + StrOff + StrX);
         if (AsciiStrCmp (Text, Name) == 0) {
           *Value = ReadUnaligned64 ((CONST UINT64 *)(Data + SymOff + Symbol * 16 + 8));
