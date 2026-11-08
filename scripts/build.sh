@@ -275,23 +275,21 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       # now makes it return 0, which is also the truthful answer for a board
       # with no UART.
       #
-      # Round 19:26 (image f6a4b9f6) also no-op'd serial_init, verified offline
-      # before flashing (_serial_init = 0x52800000 0xd65f03c0), and the USB sink
-      # still produced zero bytes: `collect: no 1209:316d port within 420s`.
-      # Both walls in the 532..536 window are therefore gone, and two questions
-      # remain: (a) is kernel_startup_initialize_upto() at line 536 reached at
-      # all, and (b) if it is, does qcom_usb_debug_init() inside
-      # PE_init_kprintf refuse the hardware?  (b) is silent by construction:
-      # the only sink at that moment is the USB device that just refused.
+      # Round 19:42 (image 03394831) put the checkpoint before the line-536 call
+      # and it fired 2 s after `fastboot boot` returned: arm_init does reach
+      # kernel_startup_initialize_upto(), so PE_init_kprintf runs and
+      # qcom_usb_debug_init() is what refuses.
       #
-      # This round answers (a).  Checkpoint just before the line-536 call:
-      # a 2 s round trip means arm_init got past serial_init and the problem is
-      # inside PE_init_kprintf; the watchdog means something still dies in the
-      # window we thought was clean.  serial_init stays no-op'd so the
-      # checkpoint is reachable at all.
+      # From here on there is no checkpoint at all.  The question is no longer
+      # "how far does it get" but "does the USB sink come up", and any reset we
+      # install would kill the kernel before PK_init_kprintf ever runs -- which
+      # is exactly what a checkpoint here would do.
+      #
+      # --no-reset keeps the stage 1/2 colour bars and still rewrites _start
+      # (the check below verifies that) but installs neither stage 3 nor stage 4.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _kernel_startup_initialize_upto --in _arm_init --reset-before ||
+        --no-reset ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
