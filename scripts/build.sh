@@ -262,22 +262,29 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       # Round 2026-11-08 19:07 (image sha256 888aaa5f, kernel +98,304 B with
       # QcomXnuUsbDebug linked in) proved the kernel never reaches the USB
       # sink: the tablet came back to adb 2-3 min later with no 1209:316d
-      # enumeration at all.  arm_init.c order is
-      #   522 arm_vm_init
-      #   525 patch_low_glo          (only when debug_boot_arg is non-zero)
-      #   532 PE_consistent_debug_inherit
-      #   535 serial_init
-      #   536 kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF)  <- PE_init_kprintf
-      #   577 PE_create_console
-      # so the previous checkpoint (before _PE_create_console, line 577) sits
-      # four calls too late to say anything.  Move it to _PE_consistent_debug_inherit,
-      # which is an unconditional `bl`: a reset here means arm_vm_init and
-      # patch_low_glo both returned, and no reset means the death is in one of
-      # those two.  --reset-before keeps the signal independent of whether the
-      # function itself returns.
+      # enumeration at all.
+      #
+      # Round 19:17 (image a02dc99c) moved the checkpoint to just before
+      # _PE_consistent_debug_inherit and it fired 2 s after `fastboot boot`
+      # returned, so arm_vm_init and patch_low_glo both returned.  Parsing the
+      # previous image's kernel showed _PE_consistent_debug_inherit already
+      # begins with 0xD65F03C0 (`ret`), and WITH_CLASSIC_S2R is 0 in this
+      # configuration, so serial_init() at arm_init.c:535 is the only call left
+      # in that window -- and pe_serial.c:792 opens with the same SecureDT
+      # lookup that patch-debug-inherit.py had to no-op.  patch-serial-init.py
+      # now makes it return 0, which is also the truthful answer for a board
+      # with no UART.
+      #
+      # So this build carries NO reset checkpoint.  --no-reset keeps the stage
+      # 1/2 colour bars and still rewrites _start (the check below verifies
+      # that) but installs neither stage 3 nor stage 4, so nothing restarts the
+      # tablet early.  The signal for this round is the USB sink itself: if the
+      # kernel reaches PE_init_kprintf, 1209:316d enumerates and kprintf lands
+      # on the wire; if it dies earlier there is nothing and the watchdog
+      # brings adb back in ~130 s.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _PE_consistent_debug_inherit --in _arm_init --reset-before --reset-delay 6 ||
+        --no-reset ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
@@ -315,6 +322,15 @@ PY
     #
     python3 "$ROOT/scripts/patch-debug-inherit.py" "$KERNEL_TMP" ||
       { log "debug-inherit NOP failed"; exit 1; }
+    #
+    # serial_init() is the next and last call in that same window.  It opens
+    # with SecureDTFindEntry, the lookup the NOP above avoids, and this board
+    # has no UART, so returning 0 is the correct answer rather than a bypass.
+    # Must run after the probe for the same reason as above: the probe counts
+    # calls, this patches the function entry.
+    #
+    python3 "$ROOT/scripts/patch-serial-init.py" "$KERNEL_TMP" ||
+      { log "serial_init NOP failed"; exit 1; }
   fi
 else
   log "no kernel-out branch; the payload will carry the config only"
