@@ -499,6 +499,15 @@ fi
 if [ -f "$DARWINBOOT_C" ]; then
   python3 "$ROOT/scripts/patch-darwinboot-pe-video.py" "$DARWINBOOT_C" ||
     { log "DarwinBoot PE_state.video seed failed"; exit 1; }
+  _seed_marks=$(grep -c "KirbyPeVideo" "$DARWINBOOT_C" 2>/dev/null | tr -d '[:space:]')
+  _seed_marks=${_seed_marks:-0}
+  log "seed: KirbyPeVideo markers in DarwinBoot.c = $_seed_marks (need >= 2)"
+  if [ "$_seed_marks" -lt 2 ]; then
+    log "seed: patch did not land; refusing to ship a build that cannot report"
+    exit 1
+  fi
+else
+  log "seed: DARWINBOOT_C missing at $DARWINBOOT_C; no seed this round"
 fi
 
 #
