@@ -260,7 +260,7 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       # reset moves ~24 s later, a panic restart does not move at all.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --reset-after _PE_create_console --in _arm_init --reset-delay 6 ||
+        --reset-after _PE_create_console --in _arm_init --reset-before --reset-delay 6 ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
