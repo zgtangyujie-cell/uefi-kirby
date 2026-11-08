@@ -68,8 +68,8 @@ ReadGcc (
 // bad == 0 means every precondition QcomUsbInspectInherited() checks was already
 // satisfied, so the refusal (if any) is past those checks: reset/role/DWC3 ID.
 //
-#define PROBE_STEP_SECONDS  3U
-#define PROBE_BASE_SECONDS  10U
+#define PROBE_STEP_SECONDS  1U
+#define PROBE_BASE_SECONDS  3U
 #define PROBE_MAX_BAD       63U
 
 static UINT32
