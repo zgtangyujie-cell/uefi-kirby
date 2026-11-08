@@ -40,48 +40,23 @@ struct pe_video {
 
 static int console_geometry (u8 **base, u32 *rb, u32 *w, u32 *h)
 {
-#ifdef PE_VIDEO_ADDR
-  volatile struct pe_video *pv = (volatile struct pe_video *)PE_VIDEO_ADDR;
-
-  if (pv->base != 0 && pv->depth == 32 && pv->rowbytes != 0 && pv->width >= 8) {
-    *base = (u8 *)pv->base;
-    *rb   = (u32)pv->rowbytes;
-    *w    = (u32)pv->width;
-    *h    = (u32)pv->height;
-    return 1;
-  }
   /*
-   * PE_state.video is never written in this kernel.  Measured across the whole
-   * image: exactly one instruction pair references 0x71FC8D8 and it is
-   * _PE_create_console forwarding that address to _initialize_screen - not a
-   * store.  So the field stays zero and the guard above refuses every message.
+   * _vinfo, not PE_state.video.
    *
-   * PE_state.boot_args is real, though: _PE_create_console dereferences it at
-   * PE_state.video + 0x28, and boot_args->Video[] carries the geometry
-   * DarwinBoot measured from GOP - the same numbers it prints at hand-off.
+   * _initialize_screen computes _vinfo.v_baseaddr as [PE_Video+0x70] plus the
+   * result of ml_io_map - a *virtual* address that can be written through.
+   * PE_state.video.v_baseAddr is the *physical* address DarwinBoot got from
+   * GOP, and drawing pixels there without a mapping faults.  That is measured,
+   * not theory: with the console reading PE_state.video directly, the panel
+   * stayed blank and the kernel stopped 3.5 minutes after the branch, which is
+   * the fault path, not a missing print.
    *
-   * The field order is ABI, not PE_Video: Video[1] is the constant 1, and
-   * Video[2..5] are rowBytes, width, height, depth (BootVideo.h:30-35).
-   * Reading Video[1] as rowBytes would compute every stride wrong, so the
-   * indices below are deliberate.
+   * So drawing keeps reading _vinfo, exactly as before.  What changed is that
+   * _vinfo now has a chance to be non-zero: DarwinBoot seeds PE_state.video
+   * with the physical geometry before the branch (scripts/patch-darwinboot-
+   * pe-video.py), _initialize_screen maps it and fills _vinfo, and this guard
+   * passes.
    */
-  {
-    volatile u64 *args = *(volatile u64 * const *)(PE_VIDEO_ADDR + 0x28);
-
-    if (args != 0) {
-      volatile u64 *v = (volatile u64 *)((volatile u8 *)args + 0x28);
-
-      if (v[0] != 0 && v[5] == 32 && v[2] != 0 && v[3] >= 8 && v[4] >= 32) {
-        *base = (u8 *)v[0];
-        *rb   = (u32)v[2];
-        *w    = (u32)v[3];
-        *h    = (u32)v[4];
-        return 1;
-      }
-    }
-  }
-  return 0;
-#else
   volatile struct vc_info *v = (volatile struct vc_info *)VINFO;
 
   if (v->v_baseaddr == 0 || v->v_depth != 32 || v->v_rowbytes == 0 || v->v_width < 8) {
@@ -92,7 +67,6 @@ static int console_geometry (u8 **base, u32 *rb, u32 *w, u32 *h)
   *w    = v->v_width;
   *h    = v->v_height;
   return 1;
-#endif
 }
 
 #define SCALE 2
