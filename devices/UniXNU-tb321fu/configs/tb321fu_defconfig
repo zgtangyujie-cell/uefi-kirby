@@ -49,6 +49,21 @@ CONFIG_XNU_BUILD_ARCHIVES=y
 # this commit measures whether the switches break the build, then the archives
 # follow.
 #
-CONFIG_XNU_BOOT_PROGRESS=y
-CONFIG_XNU_NATIVE_LEGACY_DISPLAY=y
-CONFIG_XNU_NATIVE_MOBILE_DISPLAY=n
+# Corrected against the same-SoC reference, not the one that was easiest to find.
+#
+# 5b8f19c copied sheng (SM8550, iPadOS) which uses LEGACY.  caihong is the right
+# comparison for this board: same SM8650, same iPadOS 17 profile, and already
+# verified, and its configs/caihong_defconfig:26-29 says the opposite:
+#
+#   CONFIG_XNU_BOOT_PROGRESS=n
+#   CONFIG_XNU_BUILD_ARCHIVES=y
+#   CONFIG_XNU_NATIVE_LEGACY_DISPLAY=n
+#   CONFIG_XNU_NATIVE_MOBILE_DISPLAY=y
+#
+# So mobile display it is.  Its archive recipe is a plain device script that
+# exists (UniXNU-caihong/scripts/build-native-mobile-display.py, 14 KB) and its
+# implementation is one file, kits/caihong/MobileDisplayProviderProbe.cpp - far
+# smaller than the LEGACY path's 28 KB ABI-bound builder.
+CONFIG_XNU_BOOT_PROGRESS=n
+CONFIG_XNU_NATIVE_LEGACY_DISPLAY=n
+CONFIG_XNU_NATIVE_MOBILE_DISPLAY=y

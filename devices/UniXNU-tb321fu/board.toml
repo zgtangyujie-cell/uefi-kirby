@@ -80,17 +80,18 @@ archives = [
   "build-software-aes-bindings.py",
   "build-mockfs-fixture.py",
   "build-libpthread-kernel.py",
-  # GopFramebuffer and the boot-progress page both need ABI-bound archives, and
-  # those generators (build-gop-legacy-display.py, build-boot-progress.py) live
-  # only in the sheng device repository - the upstream tree has just the
-  # check-*/probe-* verifiers.  Porting those two is a separate step: the first
-  # reads build/display-analysis/mobile-graphics-legacy-abi.json from an audit
-  # of this kernelcache, the second compiles packages/BootProgress.c.
+  # Mobile display archive, ported from caihong - the same-SoC reference.
   #
-  # Until they are ported, enabling the switches without the archives only
-  # compiles the support in; the entry points stay unresolved.  That is
-  # deliberate for this round: it measures whether the switches alone break the
-  # XNU build before any script is added.
+  # sheng (SM8550) builds a 28 KB ABI-bound LEGACY backend instead; caihong is
+  # the right model here because it shares both the SoC and the iPadOS 17
+  # profile, and it is already verified.  Its configs/caihong_defconfig:26-29
+  # selects MOBILE_DISPLAY and its archives carry this script, whose only
+  # implementation file is kits/caihong/MobileDisplayProviderProbe.cpp (5.6 KB
+  # against sheng's Builder).
+  #
+  # Ported as-is apart from one hardcoded path: line 183 now points at
+  # kits/tb321fu/MobileDisplayProviderProbe.cpp, and the probe was copied there.
+  "build-native-mobile-display.py",
 ]
 
 # prelink：从 IPSW 的 kernelcache 里把 kext 链进内核。
