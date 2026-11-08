@@ -504,16 +504,22 @@ fi
 # branch.  The symbol comes from LC_SYMTAB: prelink moves _PE_state by 0xA8
 # between builds.
 #
-# KirbyPeVideo disabled for one isolation round.
+# KirbyPeVideo rolled back (default OFF, 2026-11-08 16:3x).
 #
-# The 10:44 boot (J2, probe + seed + trustcache) dropped to the charging screen
-# 94 seconds in, while I2 (noreset, same seed) came back in Android at three
-# minutes.  Writing five words at Address + (PeVideo - Kernel.Base) is only safe
-# if that arithmetic is right, and the address is derived from a Mach-O symbol
-# rather than measured.  Turning the seed off answers a single question: does
-# the charging screen follow the seed, or was it already there?
+# The isolation round is complete and the answer is: the seed is harmful.
+#   - K-noseed baseline: reaches _IOFindBSDRoot, alive ~130 s.
+#   - J2 (probe + seed + trustcache), 10:44 boot: charging screen at 94 s.
+#   - The before-call control (D630c9 / 583f05, art7) did NOT fire either, so
+#     with the seed the kernel dies BEFORE the console call site - i.e. the
+#     seed moves the death point earlier, it does not add observability.
 #
-if [ -f "$DARWINBOOT_C" ]; then
+# Turning it back on for one round is a one-liner: KIRBY_PE_VIDEO_SEED=1
+# (e.g. in the workflow's env: block).  Default stays 0: shipping a build that
+# dies earlier to paint PE_Video is a net loss while the USB console port is
+# the actual fix (collab/CHANNEL.md #640).
+#
+KIRBY_PE_VIDEO_SEED=${KIRBY_PE_VIDEO_SEED:-0}
+if [ -f "$DARWINBOOT_C" ] && [ "$KIRBY_PE_VIDEO_SEED" = "1" ]; then
   python3 "$ROOT/scripts/patch-darwinboot-pe-video.py" "$DARWINBOOT_C" ||
     { log "DarwinBoot PE_state.video seed failed"; exit 1; }
   _seed_marks=$(grep -c "KirbyPeVideo" "$DARWINBOOT_C" 2>/dev/null | tr -d '[:space:]')
@@ -524,7 +530,7 @@ if [ -f "$DARWINBOOT_C" ]; then
     exit 1
   fi
 else
-  log "seed: DARWINBOOT_C missing at $DARWINBOOT_C; no seed this round"
+  log "seed: KIRBY_PE_VIDEO_SEED=$KIRBY_PE_VIDEO_SEED -> no PE_state.video seed this round"
 fi
 
 #

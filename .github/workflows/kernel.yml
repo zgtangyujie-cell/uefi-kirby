@@ -56,6 +56,21 @@ jobs:
           git -C devices/UniXNU checkout 13e5973748a8447cbb90520c9a2dd5e65e272435
           git -C devices/UniXNU log -1 --oneline
 
+      - name: Integrate QcomXnuUsbDebug
+        run: |
+          set -euo pipefail
+          # Keep the UniXNU tree a pure upstream checkout: the integration is one patch
+          # (a new scripts/build-qcom-xnu-usb-debug.py plus the QCOM_XNU_USB_DEBUG gate in
+          # build-xnu-4k-baseline.sh) and the module sources are vendored in this repository.
+          git -C devices/UniXNU apply "$GITHUB_WORKSPACE/patches/unixnu-qcom-xnu-usb-debug.patch"
+          mkdir -p devices/UniXNU/vendor
+          cp -R "$GITHUB_WORKSPACE/vendor/qcom-xnu-usb-debug" devices/UniXNU/vendor/
+          test -f devices/UniXNU/vendor/qcom-xnu-usb-debug/soc/Sm8650.h
+          test -f devices/UniXNU/vendor/qcom-xnu-usb-debug/patches/darwin23/0001-qcom-usb-debug-console.patch
+          test -f devices/UniXNU/scripts/build-qcom-xnu-usb-debug.py
+          grep -q -- '-DXNU_QCOM_USB_DEBUG=1' devices/UniXNU/scripts/build-xnu-4k-baseline.sh
+          grep -q 'libQcomXnuUsbDebug.a' devices/UniXNU/scripts/build-xnu-4k-baseline.sh
+
       - name: Install host tools
         run: |
           set -euo pipefail

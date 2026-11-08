@@ -92,6 +92,13 @@ archives = [
   # Ported as-is apart from one hardcoded path: line 183 now points at
   # kits/tb321fu/MobileDisplayProviderProbe.cpp, and the probe was copied there.
   "build-native-mobile-display.py",
+  # QcomXnuUsbDebug: USB CDC-ACM debug console, ported from
+  # FFT-infra/QcomXnuUsbDebug@18bcc385 (SM8550 + Darwin22) to this SM8650 +
+  # Darwin23 board.  Sources are vendored at vendor/qcom-xnu-usb-debug; the
+  # entry point below is added to the UniXNU tree by
+  # patches/unixnu-qcom-xnu-usb-debug.patch, and it builds against the real
+  # pe_kprintf.o compile record so the archive matches the kernel it links to.
+  "build-qcom-xnu-usb-debug.py",
 ]
 
 # prelink：从 IPSW 的 kernelcache 里把 kext 链进内核。
@@ -195,7 +202,7 @@ timeout = 0
 # stays in the kernel and still runs its own init; it just is not asked for a
 # root device.  Putting rd=ufsroot0 back is the one-line way to return to the
 # partition route.
-kernel_args = ["-v", "serial=3", "offline-apfs-load=1"]
+kernel_args = ["-v", "serial=3", "offline-apfs-load=1", "-enable_kprintf_spam", "qcom-usb-debug=1"]
 
 [package]
 unixnu = "../UniXNU"

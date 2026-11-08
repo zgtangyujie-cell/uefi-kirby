@@ -4,3 +4,10 @@
 # exposes LUN 0's "userdata" GPT partition as ufsroot0, so IOFindBSDRoot can
 # return it for rd=ufsroot0. Read-only unless boot-arg ufsrw=1.
 kirby-ufs.patch
+# QcomXnuUsbDebug darwin23 (XNU 10063.141.1): USB CDC-ACM debug console.
+# 0001 = pe_kprintf/kprintf/printf/debug/serial_console/serial_general hooks,
+#        rewritten so the pe_kprintf.c hunk no longer needs zzz-boot-progress
+#        (kernel.yml drops that patch from the OS series).
+# 0002 = bsd_init.c worker thread behind qcom-usb-debug=1.
+0001-qcom-usb-debug-console.patch
+0002-qcom-usb-debug-worker.patch

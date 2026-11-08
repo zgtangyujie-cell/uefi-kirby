@@ -1,0 +1,110 @@
+diff --git a/scripts/build-qcom-xnu-usb-debug.py b/scripts/build-qcom-xnu-usb-debug.py
+new file mode 100644
+index 0000000..936690b
+--- /dev/null
++++ b/scripts/build-qcom-xnu-usb-debug.py
+@@ -0,0 +1,62 @@
++#!/usr/bin/env python3
++"""Build the QcomXnuUsbDebug kernel archive with the selected XNU's compile record.
++
++The module is vendored under vendor/qcom-xnu-usb-debug; its own scripts/build.py
++does the compilation and the import/export audit, using the real pe_kprintf.o
++record so the archive matches the kernel it will be linked into.
++
++Run from the kernel archive stage: the bootstrap pass has already left
++build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/pexpert/DEVELOPMENT/pe_kprintf.o.json.
++"""
++import json
++from pathlib import Path
++import shutil
++import subprocess
++import sys
++
++ROOT = Path(__file__).resolve().parents[1]
++MODULE = ROOT / 'vendor/qcom-xnu-usb-debug'
++RECORD = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/pexpert/DEVELOPMENT/pe_kprintf.o.json'
++OUT = ROOT / 'build/qcom-xnu-usb-debug'
++ARCHIVE = OUT / 'libQcomXnuUsbDebug.a'
++# build.py refuses to write inside its source tree, so it builds under .cache and
++# this script copies the audited archive to the path the kernel link consumes.
++WORK = ROOT / '.cache/qcom-xnu-usb-debug-build'
++SOC = 'soc/Sm8650.h'
++
++
++def xcrun(tool):
++    return subprocess.check_output(['xcrun', '-f', tool], text=True).strip()
++
++
++def main():
++    if not (MODULE / 'scripts/build.py').is_file():
++        raise SystemExit(f'missing vendored module: {MODULE}')
++    if not (MODULE / SOC).is_file():
++        raise SystemExit(f'missing SoC profile: {MODULE / SOC}')
++    if not RECORD.is_file():
++        raise SystemExit(f'missing compile record: {RECORD}; the bootstrap pass must run first')
++    OUT.mkdir(parents=True, exist_ok=True)
++    command = [sys.executable, '-B', str(MODULE / 'scripts/build.py'),
++               '--compile-record', str(RECORD),
++               '--soc', SOC,
++               '--ar', xcrun('ar'),
++               '--nm', xcrun('nm'),
++               '--output', str(WORK),
++               '--replace']
++    result = subprocess.run(command, cwd=ROOT)
++    if result.returncode:
++        raise SystemExit('QcomXnuUsbDebug module build failed')
++    built = WORK / 'libQcomXnuUsbDebug.a'
++    if not built.is_file():
++        raise SystemExit(f'module build produced no archive: {built}')
++    shutil.copy2(built, ARCHIVE)
++    report = json.loads((WORK / 'build-report.json').read_text())
++    report['soc'] = SOC
++    report['archive'] = str(ARCHIVE)
++    (OUT / 'build-report.json').write_text(json.dumps(report, indent=2) + '\n')
++    print('QcomXnuUsbDebug: %s sha256 %s' % (ARCHIVE, report.get('archive_sha256', '')[:16]))
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/scripts/build-xnu-4k-baseline.sh b/scripts/build-xnu-4k-baseline.sh
+index 8f9d3cf..77caf32 100755
+--- a/scripts/build-xnu-4k-baseline.sh
++++ b/scripts/build-xnu-4k-baseline.sh
+@@ -271,6 +271,24 @@ if [ -d "$MOCKFS_OBJECT_DIR" ]; then
+ fi
+ EXTRA_MAKE_ARGS+=("ubc_subr.o_CFLAGS_ADD=-DXNU_NATIVE_CS_HASH_CACHE=$CS_HASH_CACHE_MODE")
+ EXTRA_CFLAGS=${XNU_EXTRA_CFLAGS:--Wno-reserved-identifier -Wno-pre-c11-compat -Wno-missing-designated-field-initializers -Wno-suggest-override -Wno-unnecessary-virtual-specifier -Wno-suggest-destructor-override -Wno-ms-bitfield-padding}
++# QcomXnuUsbDebug: the six patched XNU units (pexpert/arm/pe_kprintf.c,
++# osfmk/kern/debug.c, osfmk/kern/printf.c, osfmk/console/serial_console.c,
++# osfmk/console/serial_general.c, bsd/kern/bsd_init.c) each guard their hooks
++# with #if XNU_QCOM_USB_DEBUG.  EXTRA_CFLAGS reaches every unit and is safe
++# because only those six include QcomXnuUsbDebug.h.
++QCOM_XNU_USB_DEBUG=${XNU_QCOM_USB_DEBUG:-0}
++if [ "$QCOM_XNU_USB_DEBUG" != 0 ] && [ "$QCOM_XNU_USB_DEBUG" != 1 ]; then
++  echo 'XNU_QCOM_USB_DEBUG must be 0 or 1' >&2
++  exit 1
++fi
++if [ "$QCOM_XNU_USB_DEBUG" = 1 ]; then
++  QCOM_XNU_USB_DEBUG_INCLUDE=$ROOT/vendor/qcom-xnu-usb-debug/include
++  if [ ! -d "$QCOM_XNU_USB_DEBUG_INCLUDE" ]; then
++    echo "XNU_QCOM_USB_DEBUG=1 but $QCOM_XNU_USB_DEBUG_INCLUDE is missing" >&2
++    exit 1
++  fi
++  EXTRA_CFLAGS="$EXTRA_CFLAGS -DXNU_QCOM_USB_DEBUG=1 -I$QCOM_XNU_USB_DEBUG_INCLUDE"
++fi
+ OWNER_ROOT_PROBE=${XNU_VERIFIED_ROOT_PROBE:-0}
+ if [ "$OWNER_ROOT_PROBE" != 0 ] && [ "$OWNER_ROOT_PROBE" != 1 ]; then
+   echo 'XNU_VERIFIED_ROOT_PROBE must be 0 or 1' >&2
+@@ -770,6 +788,12 @@ PY_BINDINGS
+     KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$PMGR_ARCHIVE"
+     KERNEL_ARCHIVE_DEPENDENCIES="$KERNEL_ARCHIVE_DEPENDENCIES $PMGR_ARCHIVE"
+   fi
++  if [ "$QCOM_XNU_USB_DEBUG" = 1 ]; then
++    QCOM_XNU_USB_DEBUG_ARCHIVE=$ROOT/build/qcom-xnu-usb-debug/libQcomXnuUsbDebug.a
++    test -f "$QCOM_XNU_USB_DEBUG_ARCHIVE"
++    KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$QCOM_XNU_USB_DEBUG_ARCHIVE"
++    KERNEL_ARCHIVE_DEPENDENCIES="$KERNEL_ARCHIVE_DEPENDENCIES $QCOM_XNU_USB_DEBUG_ARCHIVE"
++  fi
+   # Optional extra link inputs (e.g. a stub for an unselected offline probe hook).
+   if [ "$BOOT_PROGRESS" = 1 ]; then
+     KERNEL_EXTRA_ARCHIVES="$KERNEL_EXTRA_ARCHIVES -Wl,-force_load,$ROOT/build/boot-progress/libBootProgress.a"

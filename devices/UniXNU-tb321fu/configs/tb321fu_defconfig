@@ -7,6 +7,9 @@ CONFIG_XNU_ARMCPU=y
 CONFIG_XNU_CRYPTO_BOOTSTRAP="prelinked"
 # CONFIG_XNU_NATIVE_UFS is not set
 # CONFIG_XNU_NATIVE_ADRENO is not set
+# QcomXnuUsbDebug: builds build/qcom-xnu-usb-debug/libQcomXnuUsbDebug.a and
+# force-loads it, and adds -DXNU_QCOM_USB_DEBUG=1 to the kernel CFLAGS.
+CONFIG_XNU_QCOM_USB_DEBUG=y
 # CONFIG_XNU_NATIVE_UFS is not set —— 存储走 patches/xnu/kirby-ufs.patch 的
 # BSD bdevsw 驱动，不是 ShengUfs 组件，所以这个开关保持关闭。
 #
