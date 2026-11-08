@@ -29,14 +29,6 @@
 #include <Library/UefiBootServicesTableLib.h>
 
 //
-// Must match QrLogDxe.c and the "Log_Buffer" entry of MemoryMapLib.
-//
-#define KIRBY_LOG_BASE   0xA7605000ULL
-#define KIRBY_LOG_MAX    0x00008000U
-#define KIRBY_LOG_MAGIC  0x474F4C4BU /* 'KLOG' */
-#define KIRBY_LOG_HDR    8U
-
-//
 // Must match soc/Sm8650.h in the QcomXnuUsbDebug module.
 //
 #define PROBE_GCC_BASE       0x00100000U
@@ -61,38 +53,49 @@ ReadGcc (
   return *(volatile UINT32 *)(UINTN)(PROBE_GCC_BASE + Offset);
 }
 
-static CHAR8 *
-AppendText (
-  CHAR8        *Cursor,
-  CHAR8        *End,
-  CONST CHAR8  *Text
+//
+// Encode the six bits that decide QcomUsbInspectInherited() as a boot delay.
+//
+// The kernel module cannot report its refusal: at that moment the only sink is
+// the USB device that just refused.  Writing to the panel would need a
+// photograph, and a photograph is not an automated read.  A delay is: the host
+// script measures "fastboot boot returned" -> "device is back", subtracts the
+// fixed 10 s, divides by 3 s, and gets `bad` back.
+//
+//   bit0      CFG_GDSCR.POWER_UP_COMPLETE (bit 16) is CLEAR  <- power domain off
+//   bit1..5   CBCR[0..4].CLK_OFF (bit 31) is SET             <- branch gated
+//
+// bad == 0 means every precondition QcomUsbInspectInherited() checks was already
+// satisfied, so the refusal (if any) is past those checks: reset/role/DWC3 ID.
+//
+#define PROBE_STEP_SECONDS  3U
+#define PROBE_BASE_SECONDS  10U
+#define PROBE_MAX_BAD       63U
+
+static UINT32
+BadMask (
+  VOID
   )
 {
-  while ((*Text != '\0') && (Cursor < End)) {
-    *Cursor++ = *Text++;
+  STATIC CONST UINT32  Cbcr[5] = {
+    PROBE_GCC_CBCR0, PROBE_GCC_CBCR1, PROBE_GCC_CBCR2, PROBE_GCC_CBCR3, PROBE_GCC_CBCR4
+  };
+  UINT32  Bad;
+  UINTN   Index;
+
+  Bad = 0;
+  if ((ReadGcc (PROBE_GCC_CFG_GDSCR) & (1U << 16)) == 0) {
+    Bad |= 1U;
   }
-
-  return Cursor;
-}
-
-static CHAR8 *
-AppendHex (
-  CHAR8  *Cursor,
-  CHAR8  *End,
-  UINT32  Value,
-  UINTN   Digits
-  )
-{
-  STATIC CONST CHAR8  Hex[] = "0123456789abcdef";
-  INTN                Index;
-
-  for (Index = (INTN)Digits - 1; Index >= 0; --Index) {
-    if (Cursor < End) {
-      *Cursor++ = Hex[(Value >> (Index * 4)) & 0xFU];
+  for (Index = 0; Index < 5; ++Index) {
+    if ((ReadGcc (Cbcr[Index]) & 0x80000000U) != 0) {
+      Bad |= (1U << (Index + 1));
     }
   }
-
-  return Cursor;
+  if (Bad > PROBE_MAX_BAD) {
+    Bad = PROBE_MAX_BAD;
+  }
+  return Bad;
 }
 
 EFI_STATUS
@@ -102,49 +105,9 @@ UsbStateProbeEntry (
   IN EFI_SYSTEM_TABLE  *SystemTable
   )
 {
-  volatile UINT32  *Header;
-  CHAR8            *Data;
-  CHAR8            *Cursor;
-  CHAR8            *End;
-  UINT32           Used;
+  UINT32  Bad;
 
-  Header = (volatile UINT32 *)(UINTN)KIRBY_LOG_BASE;
-  if (Header[0] != KIRBY_LOG_MAGIC) {
-    //
-    // Nobody has teed anything yet, so QrLogDxe would not read this buffer
-    // either.  Do not invent a log: a half-initialised KLOG changes what the
-    // QR shows for every later frame.
-    //
-    return EFI_SUCCESS;
-  }
-
-  Used = Header[1];
-  if (Used > (KIRBY_LOG_MAX - KIRBY_LOG_HDR - 320U)) {
-    return EFI_SUCCESS;
-  }
-
-  Data   = (CHAR8 *)(UINTN)(KIRBY_LOG_BASE + KIRBY_LOG_HDR);
-  Cursor = Data + Used;
-  End    = Cursor + 300;
-
-  Cursor = AppendText (Cursor, End, "\nUSBSTATE bcr=");
-  Cursor = AppendHex (Cursor, End, ReadGcc (PROBE_GCC_BCR), 8);
-  Cursor = AppendText (Cursor, End, " gdscr=");
-  Cursor = AppendHex (Cursor, End, ReadGcc (PROBE_GCC_GDSCR), 8);
-  Cursor = AppendText (Cursor, End, " cfg=");
-  Cursor = AppendHex (Cursor, End, ReadGcc (PROBE_GCC_CFG_GDSCR), 8);
-  Cursor = AppendText (Cursor, End, " clk=");
-  Cursor = AppendHex (Cursor, End, ReadGcc (PROBE_GCC_CBCR0), 8);
-  Cursor = AppendText (Cursor, End, ",");
-  Cursor = AppendHex (Cursor, End, ReadGcc (PROBE_GCC_CBCR1), 8);
-  Cursor = AppendText (Cursor, End, ",");
-  Cursor = AppendHex (Cursor, End, ReadGcc (PROBE_GCC_CBCR2), 8);
-  Cursor = AppendText (Cursor, End, ",");
-  Cursor = AppendHex (Cursor, End, ReadGcc (PROBE_GCC_CBCR3), 8);
-  Cursor = AppendText (Cursor, End, ",");
-  Cursor = AppendHex (Cursor, End, ReadGcc (PROBE_GCC_CBCR4), 8);
-  Cursor = AppendText (Cursor, End, "\n");
-
-  Header[1] = Used + (UINT32)(Cursor - (Data + Used));
+  Bad = BadMask ();
+  gBS->Stall ((PROBE_BASE_SECONDS + Bad * PROBE_STEP_SECONDS) * 1000000U);
   return EFI_SUCCESS;
 }
