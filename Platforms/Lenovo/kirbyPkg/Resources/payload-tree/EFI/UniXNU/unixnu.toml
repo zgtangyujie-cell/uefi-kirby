@@ -31,5 +31,6 @@ id = "xnu"
 title = "XNU"
 type = "xnu"
 path = "Payloads/kernel.macho"
+initrd = "Payloads/restore_apfs.img"
 args = "-v"
 enabled = true

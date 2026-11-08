@@ -52,6 +52,7 @@ jobs:
           mkdir -p /tmp/adt
           python3.12 scripts/gen-adt.py \
             --unixnu /tmp/UniXNU \
+            --data --trust \
             --output /tmp/adt/kernel.macho.adt 2>&1 | tee /tmp/adt.log
           rc=${PIPESTATUS[0]}
           echo "gen-adt rc=$rc"

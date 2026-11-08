@@ -35,6 +35,10 @@ def main() -> int:
     parser.add_argument("--soc-dir", default="devices/UniXNU-sm8650-common")
     parser.add_argument("--dts", default=None, help="device DTS (default: <device-dir>/dts/tb321fu.dts)")
     parser.add_argument("--output", required=True, help="path of kernel.macho.adt to write")
+    parser.add_argument("--data", action="store_true",
+                        help="declare /chosen/memory-map/RAMDisk so a ramdisk can be the root device")
+    parser.add_argument("--trust", action="store_true",
+                        help="declare /chosen/memory-map/TrustCache")
     args = parser.parse_args()
 
     device = Path(args.device_dir)
@@ -62,7 +66,7 @@ def main() -> int:
             print(f"skipping payload.adt.{key}: {reason}", flush=True)
             spec.pop(key)
 
-    adt = generate(dtb, board)
+    adt = generate(dtb, board, data=args.data, trust=args.trust)
     output.write_bytes(adt)
     print(f"ADT: {len(adt)} bytes -> {output}", flush=True)
     return 0

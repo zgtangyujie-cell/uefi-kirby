@@ -260,7 +260,7 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
       # reset moves ~24 s later, a panic restart does not move at all.
       #
       UNIXNU_UEFI="$WORK/uefi" python3 "$ENTRY_PROBE" "$KERNEL_TMP" \
-        --no-reset ||
+        --reset-after _vfs_mountroot --in _bsd_init --reset-delay 30 ||
         { echo "PROBE: install failed"; exit 1; }
       echo "PROBE: installed; verifying _start"
       python3 - "$KERNEL_TMP" <<'PY' || { log "entry probe did not change _start"; exit 1; }
@@ -316,14 +316,52 @@ else
   rm -f "$ADT_TMP"
   log "no adt-out:kernel.macho.adt; DarwinBoot will report Not Found"
 fi
+#
+# Root filesystem test without touching any partition.
+#
+# IOFindBSDRoot treats the range under /chosen/memory-map/RAMDisk as a root
+# device candidate, so a real APFS container loaded into memory is enough to
+# learn whether APFS can mount anything at all on this board.  That needs three
+# things in place: this ramdisk, an ADT that declares the RAMDisk mapping
+# (gen-adt.py --data), and an entry that names the file (initrd in unixnu.toml).
+#
+# The file is 176.0 MiB, which is over GitHub's 100 MiB per-file limit, so
+# ramdisk-out carries it in 44 MiB parts that get concatenated here.  It is
+# already a bare container: the IPSW member is an IM4P/DER wrapper with NXSB at
+# offset 59, nothing compressed, so scripts/make-ramdisk.py can rebuild it from
+# the IPSW without lzfse when this branch is stale.
+#
+RAMDISK_TMP="$WORK/restore_apfs.img"
+if git -C "$ROOT" fetch -q --depth 1 origin ramdisk-out 2>/dev/null; then
+  rm -f "$RAMDISK_TMP"
+  _parts=0
+  for _index in 000 001 002 003; do
+    if git -C "$ROOT" show "FETCH_HEAD:restore_apfs.img.$_index" >> "$RAMDISK_TMP" 2>/dev/null; then
+      _parts=$((_parts + 1))
+    else
+      break
+    fi
+  done
+  if [ "$_parts" -gt 0 ] && [ "$(head -c 4 "$RAMDISK_TMP")" = "NXSB" ]; then
+    log "ramdisk from ramdisk-out: $_parts part(s), $(wc -c < "$RAMDISK_TMP") bytes"
+  else
+    rm -f "$RAMDISK_TMP"
+    log "ramdisk-out present but did not reassemble into an APFS container; booting without one"
+  fi
+else
+  log "no ramdisk-out branch; booting without a root ramdisk"
+fi
 PAYLOAD_ARGS=(--output Platforms/Lenovo/kirbyPkg/Resources/payload.bin
-              --size-mib 64 --cluster-sectors 8 --label TB321FUESP
+              --size-mib 240 --cluster-sectors 8 --label TB321FUESP
               --add "EFI/UniXNU/unixnu.toml=Platforms/Lenovo/kirbyPkg/Resources/payload-tree/EFI/UniXNU/unixnu.toml")
 if [ -s "$KERNEL_TMP" ]; then
   PAYLOAD_ARGS+=(--add "EFI/UniXNU/Payloads/kernel.macho=$KERNEL_TMP")
 fi
 if [ -s "$ADT_TMP" ]; then
   PAYLOAD_ARGS+=(--add "EFI/UniXNU/Payloads/kernel.macho.adt=$ADT_TMP")
+fi
+if [ -s "$RAMDISK_TMP" ]; then
+  PAYLOAD_ARGS+=(--add "EFI/UniXNU/Payloads/restore_apfs.img=$RAMDISK_TMP")
 fi
 python3 "$ROOT/scripts/mkpayload.py" "${PAYLOAD_ARGS[@]}"
 

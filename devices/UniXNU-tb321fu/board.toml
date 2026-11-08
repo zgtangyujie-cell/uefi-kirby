@@ -176,7 +176,13 @@ panic_screen = true
 # 下没有 ConIn。官方 Menu.c:152-155 在 RemainingMs==0 时直接 return DefaultIndex，
 # 不创建 EVT_TIMER 事件、不依赖输入设备 → timeout=0 可自动启动默认项。
 timeout = 0
-kernel_args = ["-v", "serial=3", "rd=ufsroot0", "ufsroot=userdata", "offline-apfs-load=1"]
+# rd=/ufsroot= are deliberately absent.  They route IOFindBSDRoot to the UFS
+# block device, and the point of this build is the other branch: /chosen/
+# memory-map/RAMDisk, which carries the restore ramdisk named by initrd.  UFS
+# stays in the kernel and still runs its own init; it just is not asked for a
+# root device.  Putting rd=ufsroot0 back is the one-line way to return to the
+# partition route.
+kernel_args = ["-v", "serial=3", "offline-apfs-load=1"]
 
 [package]
 unixnu = "../UniXNU"
