@@ -55,39 +55,43 @@ initrd = "Payloads/restore_apfs.img"
 #                         unless the value is exactly 1.  Without it the module
 #                         never touches the controller.
 #
-# --- qcom-usb-diag history, measured, in order ---------------------------------
+# --- qcom-usb-diag removed.  The whole diag mechanism is unusable here. -------
 #
-# Round A (commit 8e26660, image sha256 0d979f47): qcom-usb-diag=2.
-#   Mode 2 is diag_reset(0) at the very top of qcom_usb_debug_init()
-#   (QcomXnuUsbDebug.c:746), i.e. inside PE_init_kprintf and before acquire(),
-#   and diag_reset reaches platform_smc_reset(): PSCI SYSTEM_RESET, w0 =
-#   0x84000009, then an unconditional `for (;;) wfe` (QcomXnuUsbDebug.c:103).
-#   Measured reset: 136.3 s, from wall clock minus /proc/uptime.  That is the
-#   ~130 s watchdog, not zero.
+# work/measure_reset.log records every reset instant this project ever measured,
+# as wall clock minus /proc/uptime, and not one of them is short:
 #
-#   Two readings survive that number, and they are not distinguishable by time
-#   alone, which is exactly why this file now carries diag=1 instead:
-#     (a) the SMC returned instead of resetting, so diag_reset fell into `wfe`
-#         and the watchdog collected the board at ~136 s; the whole
-#         entry-probe bisect log in scripts/build.sh rests on this same SMC and
-#         would inherit the same uncertainty;
-#     (b) the kernel never reached PE_init_kprintf, so nothing fired at all.
+#     vfs_mountroot      136.9 s
+#     console            137.0 s
+#     prelink            144.4 s
+#     apfsload           144.3 s
+#     diag2-4f4e91c      136.8 s   <- diag=2, which must fire in well under 2 s
 #
-# Round B (this run): qcom-usb-diag=1.  Mode 1 does nothing up front and only
-#   acts when acquire() refuses:
-#       fail(QCOM_USB_DEBUG_ACQUIRE_REFUSED, 0);     /* error = 21 */
-#       diag_reset(12u + 4u * native.status.error);  /* = 96 s */
-#   so one boot now separates three outcomes that Round A could not:
-#     * reset at ~96 s    -> SMC resets the board.  Reading (a) is wrong and the
-#                            kernel does reach PE_init_kprintf; 96 = 12 + 4*21
-#                            names ACQUIRE_REFUSED, so the refusal is inside
-#                            acquire(), not in the boot-arg chain.
-#     * reset at ~136 s   -> SMC does not reset.  Reading (a) holds, every
-#                            diag/probe "reset" on this board has been the
-#                            watchdog, and time-based probing has to stop.
-#     * USB 1209:316d enumerates and no reset happens -> acquire() succeeded, so
-#                            the kernel ran the whole init; the log channel is up
-#                            and diag is no longer needed at all.
-#   Nothing is written to any partition: the only observable is a reset delay.
-args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1 qcom-usb-diag=1"
+# diag=2 is diag_reset(0) at the top of qcom_usb_debug_init(), inside
+# PE_init_kprintf and before acquire().  It cannot legitimately take 136.8 s.
+# Neither can the "console" probe.  Five different probe points landing inside
+# 136-144 s is one event, not five: the ~130 s watchdog.
+#
+# The mechanism: diag_reset() ends in platform_smc_reset()
+# (QcomXnuUsbDebug.c:92-104), which issues PSCI SYSTEM_RESET (w0 = 0x84000009)
+# and then spins in `for (;;) __asm__ volatile("wfe")`.  If the SMC returns
+# instead of resetting, the kernel parks there with DAIF masked and the watchdog
+# is the only thing left to end the boot.  136.8 s for a call that should be
+# instantaneous says exactly that.
+#
+# This also voids soc/Sm8650.h:36-46, which claims the SMC reset is "qualified
+# by the diagnostic reset ... 122 s and again 137 s".  Those two numbers sit in
+# the same watchdog band.  patch-xnu-entry-probe.py's --reset-delay defaults to
+# 6 s, so a working SMC would have shown ~6 s, never ~122 s.
+#
+# Consequence for every time-based probe on this board: worthless.  diag=2 was
+# not "refusing"; it was spinning in wfe at the first kprintf -- which is also
+# why the panel never showed a single kernel character, since this runs inside
+# PE_init_kprintf while PE_kputc is still being chosen.
+#
+# So no diag argument at all.  qcom-usb-debug=1 alone lets qcom_usb_debug_init()
+# run to its own conclusion: on success the CDC device 1209:316d enumerates and
+# the log channel is up; on refusal the kernel keeps booting instead of parking,
+# so the console gets its chance and the refusal stays readable in software
+# state rather than through a reset that never happens.
+args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1"
 enabled = true
