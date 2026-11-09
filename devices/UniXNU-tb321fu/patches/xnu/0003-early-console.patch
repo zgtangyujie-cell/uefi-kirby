@@ -1,31 +1,34 @@
 --- a/osfmk/arm/arm_init.c
 +++ b/osfmk/arm/arm_init.c
-@@ -533,6 +533,19 @@
- 
+@@ -534,6 +534,22 @@
  	/* Setup debugging output. */
  	const unsigned int serial_exists = serial_init();
-+	/* (BRINGUP) The video console must exist before the KPRINTF startup chain,
-+	 * not after it.  This call sat at line 577, i.e. after
-+	 * kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF) and after the kprintf
-+	 * at line 537, so every early line was emitted with no console registered
-+	 * and the panel never showed a kernel character.  initialize_screen() is
-+	 * itself the first thing that prints, which is why a blank panel proved
-+	 * nothing about how far the kernel had got.  PE_state.video is already
-+	 * populated by PE_init_platform() above and its v_baseAddr carries bit 0
-+	 * from the boot loader, so initialize_screen() maps the framebuffer itself
-+	 * with ml_io_map.  check_for_panic_log() returns early when the device tree
-+	 * has no embedded-panic-log-size, so gPanicBase stays 0 and nothing is
-+	 * zeroed. */
-+	PE_create_console();
  	kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF);
++	/* (BRINGUP) Install the video console here, immediately after the KPRINTF
++	 * startup chain and before the first kprintf, instead of at line 577.
++	 * PE_init_kprintf (STARTUP(KPRINTF, STARTUP_RANK_FIRST), pe_kprintf.c:72)
++	 * runs inside the chain above and is what assigns PE_kputc, so before it
++	 * PE_kputc is still NULL and disable_serial_output is still TRUE -- the
++	 * reason initialize_screen()'s own `initialize_screen: b=...` line and the
++	 * first kprintf never appeared even once the console had been installed.
++	 * Measured 2026-11-09 on image 5525625: the panel went black between 47 s
++	 * and 78 s, i.e. vc_init() did clear the screen, but not one character was
++	 * drawn afterwards.  PE_state.video is filled by PE_init_platform() at line
++	 * 371 and its v_baseAddr carries bit 0 from DarwinBoot (panel: written:/n	 * D5100001 1900 640 A00 20 = 0xD5100000, 0x1900 row bytes, 0x640 wide,
++	 * 0xA00 high, 0x20 bpp), so initialize_screen() maps the framebuffer with
++	 * ml_io_map exactly as it would at line 577; the only difference is that
++	 * arm_vm_init() at line 522 has already run.  check_for_panic_log() returns
++	 * early without embedded-panic-log-size, so gPanicBase stays 0. */
++	PE_create_console();
  	kprintf("kprintf initialized\n");
  
-@@ -574,7 +587,7 @@
+ 	serialmode = 0;
+@@ -574,7 +590,7 @@
  		(void)switch_to_serial_console(); /* Switch into serial mode from video console */
  		disableConsoleOutput = FALSE;     /* Allow printfs to happen */
  	}
 -	PE_create_console();
-+	/* PE_create_console(); -- moved above kernel_startup_initialize_upto() */
++	/* PE_create_console(); -- moved above, right after the KPRINTF chain */
  
  	/* setup console output */
  	PE_init_printf(FALSE);
