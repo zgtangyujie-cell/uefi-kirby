@@ -55,17 +55,39 @@ initrd = "Payloads/restore_apfs.img"
 #                         unless the value is exactly 1.  Without it the module
 #                         never touches the controller.
 #
-# qcom-usb-diag=2 is the calibration half of the only readout that survives this
-# board's constraints (no UART, no adb under XNU, no camera at night, and a hard
-# rule against writing any partition).  In qcom_usb_debug_init()
-# (QcomXnuUsbDebug.c:736-752) mode 2 calls diag_reset(0) at the very top, before
-# acquire(); diag_reset uses PSCI SYSTEM_RESET (w0 = 0x84000009), so the tablet
-# resets immediately and the host learns two things from one boot:
-#   * the kernel really did reach PE_init_kprintf (otherwise the timing is the
-#     ~130 s watchdog instead, which is a completely different answer);
-#   * the fixed offset from "fastboot boot returned" to that point.
-# The next run uses qcom-usb-diag=1, which on refusal resets after
-# 12 + 4*native.status.error seconds, so error = (T1 - T2 - 12) / 4 names the
-# exact failing check.  Nothing is written anywhere: only a reset delay.
-args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1 qcom-usb-diag=2"
+# --- qcom-usb-diag history, measured, in order ---------------------------------
+#
+# Round A (commit 8e26660, image sha256 0d979f47): qcom-usb-diag=2.
+#   Mode 2 is diag_reset(0) at the very top of qcom_usb_debug_init()
+#   (QcomXnuUsbDebug.c:746), i.e. inside PE_init_kprintf and before acquire(),
+#   and diag_reset reaches platform_smc_reset(): PSCI SYSTEM_RESET, w0 =
+#   0x84000009, then an unconditional `for (;;) wfe` (QcomXnuUsbDebug.c:103).
+#   Measured reset: 136.3 s, from wall clock minus /proc/uptime.  That is the
+#   ~130 s watchdog, not zero.
+#
+#   Two readings survive that number, and they are not distinguishable by time
+#   alone, which is exactly why this file now carries diag=1 instead:
+#     (a) the SMC returned instead of resetting, so diag_reset fell into `wfe`
+#         and the watchdog collected the board at ~136 s; the whole
+#         entry-probe bisect log in scripts/build.sh rests on this same SMC and
+#         would inherit the same uncertainty;
+#     (b) the kernel never reached PE_init_kprintf, so nothing fired at all.
+#
+# Round B (this run): qcom-usb-diag=1.  Mode 1 does nothing up front and only
+#   acts when acquire() refuses:
+#       fail(QCOM_USB_DEBUG_ACQUIRE_REFUSED, 0);     /* error = 21 */
+#       diag_reset(12u + 4u * native.status.error);  /* = 96 s */
+#   so one boot now separates three outcomes that Round A could not:
+#     * reset at ~96 s    -> SMC resets the board.  Reading (a) is wrong and the
+#                            kernel does reach PE_init_kprintf; 96 = 12 + 4*21
+#                            names ACQUIRE_REFUSED, so the refusal is inside
+#                            acquire(), not in the boot-arg chain.
+#     * reset at ~136 s   -> SMC does not reset.  Reading (a) holds, every
+#                            diag/probe "reset" on this board has been the
+#                            watchdog, and time-based probing has to stop.
+#     * USB 1209:316d enumerates and no reset happens -> acquire() succeeded, so
+#                            the kernel ran the whole init; the log channel is up
+#                            and diag is no longer needed at all.
+#   Nothing is written to any partition: the only observable is a reset delay.
+args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1 qcom-usb-diag=1"
 enabled = true
