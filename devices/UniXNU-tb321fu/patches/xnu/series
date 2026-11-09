@@ -11,7 +11,4 @@ kirby-ufs.patch
 # 0002 = bsd_init.c worker thread behind qcom-usb-debug=1.
 0001-qcom-usb-debug-console.patch
 0002-qcom-usb-debug-worker.patch
-# kirby text console: force gc_desire_text before the screen is acquired so
 # kPEAcquireScreen keeps the text console enabled. Without it a graphics boot
-# calls gc_enable(FALSE) and vcputc_options draws nothing at all.
-0003-kirby-text-console.patch
