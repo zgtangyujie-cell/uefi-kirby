@@ -24,14 +24,41 @@ Source of truth for the same layout (xnu-full tree, 2026-11-09):
 
     pexpert/pexpert/pexpert.h:334-340   PE_state.video is an INLINE PE_Video
     pexpert/pexpert/pexpert.h:285-303   PE_Video field order; sizeof = 0x90
-    pexpert/arm/pe_init.c:528-532       PE_create_console passes &PE_state.video
+    pexpert/arm/pe_init.c:520-533       PE_create_console passes &PE_state.video
+    pexpert/arm/pe_init.c:192           PE_initialize_console -> initialize_screen
     osfmk/kern/startup.c:716            initialize_screen(NULL, kPEAcquireScreen)
-    osfmk/console/video_console.c:2804  if (boot_vinfo) wraps gc_initialize (:2929)
+    osfmk/console/video_console.c:2797  if (boot_vinfo) wraps gc_initialize (:2929)
+
+Call order, because an earlier build.sh comment had it wrong: startup.c:716
+passes NULL and only arms kPEAcquireScreen; it runs first, in start_kernel.
+PE_create_console runs later, in bsd_init, and passes &PE_state.video --
+THAT call is the one this seed feeds.  Nothing writes PE_state.video in the
+kernel (scanned all 51,695,616 bytes), so without the seed even the second
+call sees an empty struct and gc_initialize never runs.
 
 DarwinBoot holds the real numbers: Video[] comes from GOP in BootVideo.h and
 is printed at hand-off.  Its field order is ABI, not PE_Video - Video[1] is
 the constant 1 and Video[2..5] are rowBytes, width, height, depth - and this
 script writes them into the kernel's own PE_Video in the right order.
+
+REPORT PLACEMENT (2026-11-09, panel photo of the efca92d round):
+
+The first version reported with DiagDraw rows 12/13/14 at the seed site.
+DarwinBoot.c:797 fires "\fDARWINBOOT: hand-off to the kernel" AFTER the seed,
+which clears the console; and the hand-off DEBUG family (:798-812) repaints
+the console band over screen y~1259-1836, which covers rows 12-14
+(1312/1368/1424).  Measured on the photo: only tail glyphs of row 12 showed
+through between DEBUG lines; rows 13/14 and the Print line were gone.  The
+T-gfx paint at row 6 DID survive, which proves DiagDraw+GOP itself works.
+
+So the seed now splits: the WRITE stays at :754 (Image is alive there; it is
+FreePool'd at :779), and the REPORT moves after the last hand-off DEBUG line
+but BEFORE the ExitBootServices loop -- gBS dies with ExitBootServices and
+DiagDraw would silently return.  A file-scope triple carries the values
+across.  Report rows are 25/26/27 (screen y 2040/2096/2152): the photo's
+console band ends ~y1836 and the boot menu sits ~y2245, so rows 23-28 are
+the measured-empty gap.  The Print line rides the live console tail, the one
+channel nothing drawn later can cover.
 
 Three things the first version of this seed got wrong (collab/INBOX.md
 2026-11-09; elden.md:152 names the same missing marker):
@@ -58,9 +85,18 @@ prelink moves _PE_state by 0xA8 between a 19.1 MiB and a 49.3 MiB build
 import sys
 from pathlib import Path
 
-MARKER = "KirbyPeVideo"
-
 FINDER = '''
+//
+// KirbyPeVideo: hand-off between the seed site and the report site.
+//
+// The seed runs at :754, where Image is still alive (FreePool at :779).  The
+// report runs after the last hand-off DEBUG line, past the :797 form feed --
+// by then Image is gone, so the values the report needs ride here.
+//
+STATIC BOOLEAN  mKirbyPeVideoSeeded = FALSE;
+STATIC UINT64   mKirbyPeVideoState  = 0;
+STATIC UINT64   *mKirbyPeVideoPv    = NULL;
+
 //
 // KirbyPeVideo: resolve a symbol from the kernel's LC_SYMTAB.
 //
@@ -137,20 +173,24 @@ SEED = '''  //
   // measured from GOP; write it in PE_Video's order, not Video[]'s.
   //
   // PE_state.video is an INLINE struct at PE_state+8 (pexpert.h:334-340) and
-  // PE_create_console passes &PE_state.video (pe_init.c:528-532), so the 18
+  // PE_create_console passes &PE_state.video (pe_init.c:520-533), so the 18
   // lanes below ARE the struct.  A pointer here would land in v_baseAddr and
   // leave the geometry zero.
+  //
+  // This site only WRITES; the report lives after the last hand-off DEBUG
+  // line (REPORT below), because the :797 form feed and the DEBUG family
+  // erase anything painted here -- measured on the efca92d panel photo.
   //
   {
     UINT64  PeState;
     UINT64  PeVideo;
 
+    mKirbyPeVideoSeeded = FALSE;
+    mKirbyPeVideoState  = 0;
+    mKirbyPeVideoPv     = NULL;
     if (KirbyFindSymbol (Image, ImageSize, "_PE_state", &PeState)) {
-      CHAR16  KirbySeedText[96];
-
+      mKirbyPeVideoState = PeState;
       PeVideo = PeState + 8;
-      UnicodeSPrint (KirbySeedText, sizeof (KirbySeedText), L"seed: PE_state %lx video %lx", PeState, PeVideo);
-      DiagDraw (KirbySeedText, 12);
       if ((PeVideo >= Kernel.Base) && (PeVideo + 0x90 <= Kernel.Base + (Kernel.End - Kernel.Base))) {
         UINT64  *Pv = (UINT64 *)(UINTN)(Address + (PeVideo - Kernel.Base));
 
@@ -161,24 +201,47 @@ SEED = '''  //
         Pv[3] = Video[4];          // v_height
         Pv[4] = Video[5];          // v_depth
         Pv[5] = 0;                 // v_display = 0 -> kPETextMode (ZeroMem already did)
-        Print (L"seed: PE_state.video <- pa %lx va %lx %lux%lu row %lu depth %lu\\n",
-               Video[0] | 1ULL, (UINT64)(UINTN)Pv, Video[3], Video[4], Video[2], Video[5]);
-        UnicodeSPrint (KirbySeedText, sizeof (KirbySeedText), L"seed: b=%lx w=%lx h=%lx r=%lx d=%lx",
-                       Video[0], Video[3], Video[4], Video[2], Video[5]);
-        DiagDraw (KirbySeedText, 13);
-        UnicodeSPrint (KirbySeedText, sizeof (KirbySeedText), L"written: %lx %lx %lx %lx %lx",
-                       Pv[0], Pv[1], Pv[2], Pv[3], Pv[4]);
-        DiagDraw (KirbySeedText, 14);
-      } else {
-        UnicodeSPrint (KirbySeedText, sizeof (KirbySeedText), L"seed: PE_state %lx outside window", PeState);
-        DiagDraw (KirbySeedText, 12);
+        mKirbyPeVideoPv     = Pv;
+        mKirbyPeVideoSeeded = TRUE;
       }
-    } else {
-      CHAR16  KirbySeedText[96];
-
-      UnicodeSPrint (KirbySeedText, sizeof (KirbySeedText), L"seed: _PE_state NOT FOUND in symtab");
-      DiagDraw (KirbySeedText, 12);
     }
+  }
+'''
+
+REPORT = '''  //
+  // KirbyPeVideo: report what the seed wrote, past the form feed.
+  //
+  // Sits between the last hand-off DEBUG line and the ExitBootServices loop:
+  // the console has been cleared and refilled by then (so this is the first
+  // thing that actually stays), and gBS is still alive so DiagDraw's
+  // LocateProtocol works.  Rows 25/26/27 land in the measured-empty gap
+  // between the console band (ends ~y1836) and the boot menu (~y2245);
+  // screen y = 640 + Row*56, so 2040/2096/2152.  The Print line rides the
+  // console tail itself -- the one channel later painting cannot cover.
+  //
+  if (mKirbyPeVideoSeeded) {
+    CHAR16  KirbyReportText[96];
+
+    Print (L"seed: PE_state.video <- pa %lx va %lx %lux%lu row %lu depth %lu\\n",
+           mKirbyPeVideoPv[0] & ~1ULL, (UINT64)(UINTN)mKirbyPeVideoPv,
+           mKirbyPeVideoPv[2], mKirbyPeVideoPv[3], mKirbyPeVideoPv[1], mKirbyPeVideoPv[4]);
+    UnicodeSPrint (KirbyReportText, sizeof (KirbyReportText), L"seed: PE_state %lx video %lx",
+                   mKirbyPeVideoState, mKirbyPeVideoState + 8);
+    DiagDraw (KirbyReportText, 25);
+    UnicodeSPrint (KirbyReportText, sizeof (KirbyReportText), L"seed: b=%lx w=%lx h=%lx r=%lx d=%lx",
+                   mKirbyPeVideoPv[0], mKirbyPeVideoPv[2], mKirbyPeVideoPv[3],
+                   mKirbyPeVideoPv[1], mKirbyPeVideoPv[4]);
+    DiagDraw (KirbyReportText, 26);
+    UnicodeSPrint (KirbyReportText, sizeof (KirbyReportText), L"written: %lx %lx %lx %lx %lx",
+                   mKirbyPeVideoPv[0], mKirbyPeVideoPv[1], mKirbyPeVideoPv[2],
+                   mKirbyPeVideoPv[3], mKirbyPeVideoPv[4]);
+    DiagDraw (KirbyReportText, 27);
+  } else {
+    CHAR16  KirbyReportText[96];
+
+    UnicodeSPrint (KirbyReportText, sizeof (KirbyReportText), L"seed: NOT SEEDED state %lx", mKirbyPeVideoState);
+    DiagDraw (KirbyReportText, 25);
+    Print (L"seed: PE_state.video NOT seeded (state %lx)\\n", mKirbyPeVideoState);
   }
 '''
 
@@ -188,19 +251,24 @@ def main() -> int:
         raise SystemExit(__doc__)
     path = Path(sys.argv[1])
     text = path.read_text(encoding="utf-8", errors="replace")
-    if MARKER in text:
-        print("DarwinBoot: PE_state.video seed already applied")
-        return 0
 
     anchor = "STATIC\nEFI_STATUS\nParseKernel ("
     if anchor not in text:
         raise SystemExit("ParseKernel declaration not found")
-    text = text.replace(anchor, FINDER.strip("\n") + "\n\n" + anchor, 1)
+    if "mKirbyPeVideoSeeded" not in text:
+        text = text.replace(anchor, FINDER.strip("\n") + "\n\n" + anchor, 1)
 
     seed_anchor = "  CopyMem ((VOID *)(UINTN)TreeAddress, Tree, TreeSize);"
     if seed_anchor not in text:
         raise SystemExit("TreeAddress CopyMem anchor not found")
-    text = text.replace(seed_anchor, seed_anchor + "\n" + SEED, 1)
+    if "KirbyPeVideo: seed PE_state.video" not in text:
+        text = text.replace(seed_anchor, seed_anchor + "\n" + SEED, 1)
+
+    report_anchor = "  for (Attempt = 0; Attempt < 3; Attempt++) {\n    MapSize = Capacity;"
+    if report_anchor not in text:
+        raise SystemExit("ExitBootServices loop anchor not found")
+    if "KirbyPeVideo: report what the seed wrote" not in text:
+        text = text.replace(report_anchor, REPORT.strip("\n") + "\n\n" + report_anchor, 1)
 
     path.write_text(text, encoding="utf-8")
     print("DarwinBoot: PE_state.video seed inserted")

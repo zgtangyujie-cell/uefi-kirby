@@ -541,11 +541,13 @@ fi
 # KirbyPeVideo: hand the kernel a real PE_Video struct (collab/INBOX.md,
 # 2026-11-09; root cause confirmed independently twice: 4c84cd8 + DSH #697).
 #
-# startup.c:716 calls initialize_screen(NULL, ...), so video_console.c's
-# `if (boot_vinfo)` block -- the one that runs gc_initialize() at :2929 --
-# never executes.  gc_initialized stays 0 and vcputc_options' first gate
-# fails forever.  Nothing else writes PE_state.video either
-# (check_pe_init_video.py: _PE_init_platform does NOT touch +0x08).
+# startup.c:716 calls initialize_screen(NULL, ...) -- it only arms
+# kPEAcquireScreen and runs first, in start_kernel.  PE_create_console runs
+# later, in bsd_init, and passes &PE_state.video (pe_init.c:520-533); THAT
+# call is the one this seed feeds: video_console.c's `if (boot_vinfo)` block
+# -- the one that runs gc_initialize() at :2929 -- needs a non-empty struct,
+# and nothing in the kernel writes PE_state.video (scanned all 51,695,616
+# bytes; check_pe_init_video.py: _PE_init_platform does NOT touch +0x08).
 #
 # PE_state.video is an INLINE struct, not a pointer -- xnu-full source:
 #   pexpert/pexpert/pexpert.h:334-340  PE_Video video; inside PE_state
