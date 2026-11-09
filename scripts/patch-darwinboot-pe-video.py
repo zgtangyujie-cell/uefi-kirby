@@ -235,7 +235,14 @@ SEED = '''  //
     // DarwinBootVideoFromGop writes the literal 1 into Video[1] (BootVideo.h:31),
     // which is this slot, so without this write v_display is always 1.
     //
-    if ((ArgsAddress != 0) && (ArgsAddress >= Kernel.Base)) {
+    // NOTE ON THE GUARD: ArgsAddress is a PHYSICAL address (DarwinBoot.c:782
+    // computes it from Address, which is physical).  Kernel.Base is the VIRTUAL
+    // base and Address is the physical one, so comparing ArgsAddress against
+    // Kernel.Base is always false and silently skips this block -- measured on
+    // image 7c477c3 as `bargs NOT WRITTEN` on the panel.  Compare against
+    // Address instead, which is the physical window start.
+    //
+    if ((ArgsAddress != 0) && (ArgsAddress >= Address)) {
       UINT64  *Bv = (UINT64 *)(UINTN)(ArgsAddress + 0x28);
 
       Bv[0] = Video[0] | 1ULL;   // v_baseAddr  - bit0: physical-address marker
