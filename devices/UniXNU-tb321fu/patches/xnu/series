@@ -12,3 +12,16 @@ kirby-ufs.patch
 0001-qcom-usb-debug-console.patch
 0002-qcom-usb-debug-worker.patch
 # kPEAcquireScreen keeps the text console enabled. Without it a graphics boot
+# sets gc_graphics_boot TRUE, graphics_now TRUE, and gc_enable(FALSE) leaves
+# vcputc shut forever; that is arm_init's console_mode patch, not this series.
+#
+# 0003 = vcputc_options: drop the two cursor calls.  Evidence it is needed:
+# with v_display = 1 the gate stays shut and the board lives 142.1 s; with
+# v_display = 0 the gate opens and the board resets at 78.9 s.  Same kernel
+# sha256 5d6725ccdd2cedf84af92563 in both images, so the gate word is the only
+# variable.  Inside the gate the first action is gc_hide_cursor, which is
+# vc_reverse_cursor doing `where[col] = ~where[col]` on vinfo.v_baseaddr
+# (video_console.c:1710-1726) -- a read-modify-write on the framebuffer before
+# any character is emitted.  Removing those two calls keeps gc_putchar, so text
+# still paints and the cursor blink (irrelevant to bring-up) does not.
+0003-vcputc-no-cursor.patch

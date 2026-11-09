@@ -1,0 +1,24 @@
+--- a/osfmk/console/video_console.c
++++ b/osfmk/console/video_console.c
+@@ -1233,9 +1233,19 @@
+ 	if (gc_initialized && gc_enabled) {
+ 		VCPUTC_LOCK_LOCK();
+ 		if (gc_enabled) {
+-			gc_hide_cursor(gc_x, gc_y);
++			/*
++			 * (BRINGUP) cursor invert disabled.  gc_hide_cursor and gc_show_cursor
++			 * both go to vc_reverse_cursor, which does a read-modify-write on
++			 * vinfo.v_baseaddr (video_console.c:1710-1726).  On this board the gate
++			 * opens (v_display = 0 -> op = kPETextMode -> gc_enabled TRUE) and the
++			 * board then resets at 78.9 s, versus 142.1 s with the gate shut; the
++			 * only variable in that comparison is this word, so the first
++			 * framebuffer touch is what fails.  Text output does not need the
++			 * cursor blink, so drop these two calls and keep gc_putchar.
++			 */
++			/* gc_hide_cursor(gc_x, gc_y); */
+ 			gc_putchar(c);
+-			gc_show_cursor(gc_x, gc_y);
++			/* gc_show_cursor(gc_x, gc_y); */
+ 		}
+ #if SCHED_HYGIENE_DEBUG
+ 		abandon_preemption_disable_measurement();
