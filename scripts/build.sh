@@ -538,39 +538,41 @@ print("DarwinBoot: paints video0/1/2 before ExitBootServices")
 fi
 
 #
-# KirbyPeVideo: hand the kernel the panel geometry it cannot find itself.
+# KirbyPeVideo: hand the kernel a real PE_Video struct (collab/INBOX.md,
+# 2026-11-09; root cause confirmed independently twice: 4c84cd8 + DSH #697).
 #
-# Measured on the 51,695,616-byte kernel this board builds: nothing writes
-# PE_state.video or PE_state.boot_args.  adrp+add+str, movz/movk constant builds
-# and direct str-to-[adrp,#off] were all scanned and all came back empty.  The
-# only reference to PE_state.video is _PE_create_console forwarding the address
-# to _initialize_screen, so _initialize_screen sees an all-zero PE_Video, leaves
-# _vinfo zero, and every console guard refuses - a kernel that runs for 130
-# seconds paints nothing.
+# startup.c:716 calls initialize_screen(NULL, ...), so video_console.c's
+# `if (boot_vinfo)` block -- the one that runs gc_initialize() at :2929 --
+# never executes.  gc_initialized stays 0 and vcputc_options' first gate
+# fails forever.  Nothing else writes PE_state.video either
+# (check_pe_init_video.py: _PE_init_platform does NOT touch +0x08).
 #
-# DarwinBoot already holds the real numbers (Video[] from GOP, printed at
-# hand-off), so write PE_Video into the kernel's own address space before the
-# branch.  The symbol comes from LC_SYMTAB: prelink moves _PE_state by 0xA8
-# between builds.
+# PE_state.video is an INLINE struct, not a pointer -- xnu-full source:
+#   pexpert/pexpert/pexpert.h:334-340  PE_Video video; inside PE_state
+#   pexpert/arm/pe_init.c:528-532      PE_create_console passes &PE_state.video
+# so the seed writes the 18 lanes (0x90 = sizeof(PE_Video), pexpert.h:285-303)
+# straight into PE_state+8.  A pointer written there would land in v_baseAddr
+# and leave v_rowBytes..v_depth zero -- that variant was drafted, checked
+# against the source, and dropped before it ever shipped (CHANNEL #689).
 #
-# KirbyPeVideo rolled back (default OFF, 2026-11-08 16:3x).
+# v_baseAddr bit0=1 is initialize_screen's physical-address marker:
+#   video_console.c:2843  makeMapping = (kernel_map == VM_MAP_NULL) || (1 & newVideoVirt)
+# Without it the kernel never maps the panel, vinfo keeps the physical
+# address, and the first paint faults on the unmapped VA -- that is the
+# T-gfx round (seed landed, panel read "PE_state.video <- 0xD5100000 ...",
+# reset 220 s in) and elden.md:152 names the same missing marker.  With it,
+# :2880 ml_io_map_unmappable maps the framebuffer and :2929 arms the console.
+# v_display stays 0 -> kPETextMode (pe_init.c:528).  Geometry from the 14:36
+# panel photo: 1600x2560, row 6400, depth 32.
 #
-# The isolation round is complete and the answer is: the seed is harmful.
-#   - K-noseed baseline: reaches _IOFindBSDRoot, alive ~130 s.
-#   - J2 (probe + seed + trustcache), 10:44 boot: charging screen at 94 s.
-#   - The before-call control (D630c9 / 583f05, art7) did NOT fire either, so
-#     with the seed the kernel dies BEFORE the console call site - i.e. the
-#     seed moves the death point earlier, it does not add observability.
+# The one address this needs, _PE_state, is resolved at runtime by
+# KirbyFindSymbol inside DarwinBoot (prelink moves it by 0xA8 between
+# builds); nothing is hardcoded here and no build-time resolver is needed.
 #
-# Turning it back on for one round is a one-liner: KIRBY_PE_VIDEO_SEED=1
-# (e.g. in the workflow's env: block).  Default stays 0: shipping a build that
-# dies earlier to paint PE_Video is a net loss while the USB console port is
-# the actual fix (collab/CHANNEL.md #640).
-#
-KIRBY_PE_VIDEO_SEED=${KIRBY_PE_VIDEO_SEED:-0}
+KIRBY_PE_VIDEO_SEED=${KIRBY_PE_VIDEO_SEED:-1}
 if [ -f "$DARWINBOOT_C" ] && [ "$KIRBY_PE_VIDEO_SEED" = "1" ]; then
   python3 "$ROOT/scripts/patch-darwinboot-pe-video.py" "$DARWINBOOT_C" ||
-    { log "DarwinBoot PE_state.video seed failed"; exit 1; }
+    { log "DarwinBoot PE_Video seed failed"; exit 1; }
   _seed_marks=$(grep -c "KirbyPeVideo" "$DARWINBOOT_C" 2>/dev/null | tr -d '[:space:]')
   _seed_marks=${_seed_marks:-0}
   log "seed: KirbyPeVideo markers in DarwinBoot.c = $_seed_marks (need >= 2)"
