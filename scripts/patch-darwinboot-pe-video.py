@@ -29,12 +29,18 @@ Source of truth for the same layout (xnu-full tree, 2026-11-09):
     osfmk/kern/startup.c:716            initialize_screen(NULL, kPEAcquireScreen)
     osfmk/console/video_console.c:2797  if (boot_vinfo) wraps gc_initialize (:2929)
 
-Call order, because an earlier build.sh comment had it wrong: startup.c:716
-passes NULL and only arms kPEAcquireScreen; it runs first, in start_kernel.
-PE_create_console runs later, in bsd_init, and passes &PE_state.video --
-THAT call is the one this seed feeds.  Nothing writes PE_state.video in the
-kernel (scanned all 51,695,616 bytes), so without the seed even the second
-call sees an empty struct and gc_initialize never runs.
+Call order (xnu-full source, 2026-11-09): PE_create_console is called from
+osfmk/arm/arm_init.c:577.  startup.c:716's initialize_screen(NULL,
+kPEAcquireScreen) lives in kernel_bootstrap_thread (startup.c:600), which
+arm_init starts only afterwards.  So the NON-NULL call -- the one this seed
+feeds -- happens FIRST, and the NULL one merely arms kPEAcquireScreen after
+it.  (An earlier comment claimed the reverse, "bsd_init"; the call site is
+arm_init.c:577, before the bootstrap thread.)  Nothing writes
+PE_state.video in the kernel (scanned all 51,695,616 bytes), so without
+the seed even that first call sees an empty struct and gc_initialize never
+runs -- a zero v_baseAddr takes the "No video" branch and v_depth drops to
+0 ("vc routines are nop", video_console.c), which is exactly the silent
+console the panel photos showed.
 
 DarwinBoot holds the real numbers: Video[] comes from GOP in BootVideo.h and
 is printed at hand-off.  Its field order is ABI, not PE_Video - Video[1] is
