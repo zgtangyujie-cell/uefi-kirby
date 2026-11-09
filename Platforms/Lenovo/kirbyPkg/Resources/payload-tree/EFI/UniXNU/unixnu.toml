@@ -153,5 +153,28 @@ initrd = "Payloads/restore_apfs.img"
 # DB_HALT (0x1) is not set, so nothing stops at boot.  Only 0x8 is used here: the
 # other bits in 0x14e are obsolete or unrelated (DB_NMI, DB_ARP), and there is no
 # reason to switch them on.
+# --- round D: the console is created before the KPRINTF chain (15a315b) -------
+#
+# Rounds A-C narrowed the death to arm_init.c:536..577 and cleared the module:
+# with qcom-usb-debug=0 (no GCC, no DWC3, no SMMU, no MMIO at all) the board
+# still reset at 136.9 s, against 132.5 s with =1 -- one watchdog band.
+#
+# Round D adds patches/xnu/0003-early-console.patch, which moves
+# PE_create_console() from line 577 to just before line 536.  Until now the
+# first kprintf was at line 537 and the console was installed at 577, so no
+# early line could ever reach the panel; initialize_screen() -- the function
+# that installs it -- is itself the first thing that prints.  A blank panel
+# therefore never proved where the kernel had got to, and every earlier
+# "it died before X" reading inherited that.
+#
+# Expected, in this order, all non-time-based (the PSCI reset does not fire on
+# this board, see above):
+#   the panel shows `initialize_screen: b=D5100000, w=640, h=A00, r=1900, ...`
+#       -> the console is up and every later -v line is new information
+#   then `kprintf initialized`, then the -v flood
+#   at BSD init, `QCOM USB WORKER unavailable phase=5 error=N` names the exact
+#       check qcom_usb_debug_init() refused at
+#   nothing at all -> ml_io_map or the mobile display provider, and only then
+#       is the display backend itself suspect
 args = "-v debug=0x8 offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1"
 enabled = true
