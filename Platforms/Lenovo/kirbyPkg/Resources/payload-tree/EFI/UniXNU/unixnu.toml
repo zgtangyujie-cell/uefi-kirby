@@ -93,5 +93,40 @@ initrd = "Payloads/restore_apfs.img"
 # the log channel is up; on refusal the kernel keeps booting instead of parking,
 # so the console gets its chance and the refusal stays readable in software
 # state rather than through a reset that never happens.
-args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1"
+# --- round B result: dropping diag changed nothing, so the module is the suspect
+#
+# fc9c69f shipped the args below with qcom-usb-debug=1 and no diag.  Measured:
+#
+#     fc9c69f: RESET happened 132.5 s after fastboot boot returned
+#     1209:316d never appeared (collect-win.py waited 500 s)
+#
+# 132.5 s sits in the same watchdog band as every earlier measurement, and this
+# build contains no diag_reset() call at all -- so nothing in this image issues a
+# PSCI reset.  The 132.5 s reset can only be the watchdog, which means the kernel
+# hung somewhere after arm_init.c:536 and never came back.
+#
+# acquire() cannot be that hang.  Its first check is cpu_number() != master_cpu;
+# cpu_number() is getCpuDatap()->cpu_number (osfmk/arm/cpu_common.c:828),
+# getCpuDatap() is current_thread()->machine.CpuDatap (osfmk/arm/cpu_data.h:123),
+# and arm_init.c:449-452 sets that to &BootCpuData with
+# BootCpuData.cpu_number = master_cpu (:438).  The two are equal by construction,
+# and usb_busy is static zero.  So this build did enter the DWC3 work.
+#
+# That leaves the module's own hardware access as the prime suspect.  Its
+# polling loop is bounded to 5 s, and out: releases the lock, so the code cannot
+# wait forever by itself.  A single DWC3 MMIO read can: this project already
+# recorded on 2026-11-08 that reading DWC3 while its branch clock is gated stalls
+# the interconnect, which is why the GCC probe reads only GCC.
+#
+# Round C therefore sets qcom-usb-debug=0.  acquire() still takes and releases
+# usb_busy, then PE_parse_boot_argn returns 0 != 1 and the function goes straight
+# to `out` (QcomXnuUsbDebug.c:759-761) -- no GCC, no DWC3, no SMMU, no MMIO at
+# all.  The question is purely: does the kernel stop dying at ~132 s?
+#
+#   no reset within 420 s, or adb never returns -> the module's hardware access is
+#       what hangs the board, and the next step is to narrow which register
+#       (GCC read first, DWC3 after checking the branch clock)
+#   still ~132 s -> the module is innocent, the hang is elsewhere between
+#       arm_init.c:536 and BSD init, and the module can go back to =1
+args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=0"
 enabled = true
