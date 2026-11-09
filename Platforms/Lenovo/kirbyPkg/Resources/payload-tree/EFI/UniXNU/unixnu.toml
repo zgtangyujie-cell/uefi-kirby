@@ -128,5 +128,30 @@ initrd = "Payloads/restore_apfs.img"
 #       (GCC read first, DWC3 after checking the branch clock)
 #   still ~132 s -> the module is innocent, the hang is elsewhere between
 #       arm_init.c:536 and BSD init, and the module can go back to =1
-args = "-v offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=0"
+# --- debug=0x8: without it kprintf never reaches PE_kputc at all --------------
+#
+# pe_kprintf.c:105 gates the whole output path on
+#
+#     if (!disable_serial_output && !disable_kprintf_output) { ... PE_kputc ... }
+#     else { os_log_with_args(...); }
+#
+# disable_serial_output starts TRUE (pe_kprintf.c:21) and only
+# PE_init_kprintf_config clears it, and only when the boot arg sets the flag:
+#
+#     debug_boot_arg & DB_KPRT   --  pe_kprintf.c:41-43, DB_KPRT = 0x8
+#
+# -enable_kprintf_spam clears disable_kprintf_output, which is the *other* half
+# (pe_kprintf.c:47-51), so with both halves the sink runs -- but this image has
+# never passed debug= at all.  disable_serial_output has therefore been TRUE on
+# every round so far, kprintf has always taken the os_log_with_args branch, and
+# PE_kputc has never been called once.  That is why the panel shows no kernel
+# character and why a USB sink hooked to PE_kputc could never receive a byte even
+# with the controller up.
+#
+# The two reference devices both pass it: sheng-ref and kebab-ref ship
+# `-v serial=3 debug=0x14e`, and 0x14e = 0x2|0x4|0x8|0x40|0x100 with 0x8 = DB_KPRT.
+# DB_HALT (0x1) is not set, so nothing stops at boot.  Only 0x8 is used here: the
+# other bits in 0x14e are obsolete or unrelated (DB_NMI, DB_ARP), and there is no
+# reason to switch them on.
+args = "-v debug=0x8 offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=0"
 enabled = true
