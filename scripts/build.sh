@@ -228,7 +228,12 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
     # untouched _start while the build kept succeeding.
     #
     ENTRY_PROBE="$WORK/unixnu/scripts/patch-xnu-entry-probe.py"
-    if [ -f "$ENTRY_PROBE" ]; then
+    if [ "${KIRBY_ENTRY_PROBE:-0}" != "1" ]; then
+      # A physical-address marker in boot_args.Video[0] is for XNU's mapper,
+      # not an aligned MMU-off painter pointer. USB capture needs no bars.
+      # Preserve the kernel entry and MMU-enable instructions by default.
+      log "USB log mode: native entry/MMU handoff preserved; painter probes disabled"
+    elif [ -f "$ENTRY_PROBE" ]; then
       #
       # The probe shells out to llvm-nm / clang / ld.lld / llvm-objcopy /
       # llvm-size / llvm-readelf and falls back to the macOS Homebrew prefix
