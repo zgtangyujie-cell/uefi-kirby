@@ -1,0 +1,118 @@
+component:XnuPrelink/patches/xnu-10063.141.1-security-init.patch
+component:XnuPrelink/patches/xnu-10063.141.1-sparse-index.patch
+== defconfig
+== configuration tb321fu_defconfig -> /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/tb321fu/ipados-17.7.11-21H461/tb321fu/.config
+== fetch
+== submodules /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU
+== fetch https://github.com/apple-oss-distributions/xnu.git d8b80295118e
++ git -C /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/xnu-b7545ced fetch -q --depth 1 origin d8b80295118ef25ac3a784134bcf95cd8e88109f
+== fetch https://github.com/apple-oss-distributions/libplatform.git a00a4cc36da2
++ git -C /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/libplatform-0f31118b fetch -q --depth 1 origin a00a4cc36da2110578bcf3b8eeeeb93dcc7f4e11
+== fetch https://github.com/apple-oss-distributions/libdispatch.git 30fe6a7d9453
++ git -C /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/libdispatch-d8f167ce fetch -q --depth 1 origin 30fe6a7d945340ce69cef121132f049e810089a5
+== fetch https://github.com/apple-oss-distributions/AvailabilityVersions.git 933f9360f1b7
++ git -C /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/AvailabilityVersions-6928d18a fetch -q --depth 1 origin 933f9360f1b70dfbda5548386a3d65e0358b4f7d
+== fetch https://github.com/microsoft/mu_basecore.git cfb93724a06f
++ git -C /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/mu_basecore-8f10084c fetch -q --depth 1 origin cfb93724a06ff86ff5ba971413368a7809ee42a5
++ git -C /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/mu_basecore-8f10084c submodule update --init --depth 1 -- MdePkg/Library/BaseFdtLib/libfdt MdePkg/Library/MipiSysTLib/mipisyst BaseTools/Source/C/BrotliCompress/brotli MdeModulePkg/Library/BrotliCustomDecompressLib/brotli SecurityPkg/DeviceSecurity/SpdmLib/libspdm
+Submodule 'BaseTools/Source/C/BrotliCompress/brotli' (https://github.com/google/brotli) registered for path 'BaseTools/Source/C/BrotliCompress/brotli'
+Submodule 'MdeModulePkg/Library/BrotliCustomDecompressLib/brotli' (https://github.com/google/brotli) registered for path 'MdeModulePkg/Library/BrotliCustomDecompressLib/brotli'
+Submodule 'MdePkg/Library/BaseFdtLib/libfdt' (https://github.com/devicetree-org/pylibfdt.git) registered for path 'MdePkg/Library/BaseFdtLib/libfdt'
+Submodule 'MdePkg/Library/MipiSysTLib/mipisyst' (https://github.com/MIPI-Alliance/public-mipi-sys-t.git) registered for path 'MdePkg/Library/MipiSysTLib/mipisyst'
+Submodule 'SecurityPkg/DeviceSecurity/SpdmLib/libspdm' (https://github.com/DMTF/libspdm.git) registered for path 'SecurityPkg/DeviceSecurity/SpdmLib/libspdm'
+Cloning into '/Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/mu_basecore-8f10084c/BaseTools/Source/C/BrotliCompress/brotli'...
+Cloning into '/Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/mu_basecore-8f10084c/MdeModulePkg/Library/BrotliCustomDecompressLib/brotli'...
+Cloning into '/Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/mu_basecore-8f10084c/MdePkg/Library/BaseFdtLib/libfdt'...
+Cloning into '/Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/mu_basecore-8f10084c/MdePkg/Library/MipiSysTLib/mipisyst'...
+Cloning into '/Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/mu_basecore-8f10084c/SecurityPkg/DeviceSecurity/SpdmLib/libspdm'...
+From https://github.com/google/brotli
+ * branch            e230f474b87134e8c6c85b630084c612057f253e -> FETCH_HEAD
+Submodule path 'BaseTools/Source/C/BrotliCompress/brotli': checked out 'e230f474b87134e8c6c85b630084c612057f253e'
+From https://github.com/google/brotli
+ * branch            e230f474b87134e8c6c85b630084c612057f253e -> FETCH_HEAD
+Submodule path 'MdeModulePkg/Library/BrotliCustomDecompressLib/brotli': checked out 'e230f474b87134e8c6c85b630084c612057f253e'
+From https://github.com/devicetree-org/pylibfdt
+ * branch            cfff805481bdea27f900c32698171286542b8d3c -> FETCH_HEAD
+Submodule path 'MdePkg/Library/BaseFdtLib/libfdt': checked out 'cfff805481bdea27f900c32698171286542b8d3c'
+From https://github.com/MIPI-Alliance/public-mipi-sys-t
+ * branch            370b5944c046bab043dd8b133727b2135af7747a -> FETCH_HEAD
+Submodule path 'MdePkg/Library/MipiSysTLib/mipisyst': checked out '370b5944c046bab043dd8b133727b2135af7747a'
+From https://github.com/DMTF/libspdm
+ * branch            f55cf6d48ec69b4ac60a63903e9c6a2cb0fd155d -> FETCH_HEAD
+Submodule path 'SecurityPkg/DeviceSecurity/SpdmLib/libspdm': checked out 'f55cf6d48ec69b4ac60a63903e9c6a2cb0fd155d'
+== fetch https://github.com/apple-oss-distributions/libpthread.git c0e60fb5ecfc
++ git -C /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/libpthread-9e5201bd fetch -q --depth 1 origin c0e60fb5ecfc54cf379c261d3f9572cc22ded891
+== fetch https://github.com/ONLYA/corecrypto-2023.git 11fba65b12d8
++ git -C /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/corecrypto-2023-c0651bae fetch -q --depth 1 origin 11fba65b12d8830630e248dfa8344caf8b065f26
+== fetch https://github.com/apple-oss-distributions/IOStorageFamily.git e45fbe30a787
++ git -C /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/IOStorageFamily-67f9003c fetch -q --depth 1 origin e45fbe30a7879e0b16e26dddb78538f1b00e0bff
+== wrote /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU-tb321fu/unixnu.lock
+== build
+== submodules /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU
+== tree /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/tb321fu/ipados-17.7.11-21H461/tb321fu/tree
+== kernel: XNU
+== kernel: prepare XNU d8b80295118e
++ git clone --quiet --shared --no-checkout /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/feeds/xnu-b7545ced /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU/out/tb321fu/ipados-17.7.11-21H461/tb321fu/tree/.cache/xnu-work
+== kernel: patch apple-only-cpu-tunables.patch
+== kernel: patch architectural-timer-entry.patch
+== kernel: patch armvirt-platform-personality.patch
+== kernel: patch cxx-flag-dependencies.patch
+== kernel: patch disabled-deferred-reclaim.patch
+== kernel: patch external-archive-dependencies.patch
+== kernel: patch kernel-sdk-root.patch
+== kernel: patch local-availability.patch
+== kernel: patch mockfs-intermediate-lookup.patch
+== kernel: patch mockfs-memory-device-width.patch
+== kernel: patch mockfs-statfs.patch
+== kernel: patch mockfs-test-file.patch
+== kernel: patch mockfs-typed-allocation.patch
+== kernel: patch native-4k-bootstrap-capacity.patch
+== kernel: patch native-4k-signature-hash-cache.patch
+== kernel: patch native-4k-user-abi.patch
+== kernel: patch native-aes-personality.patch
+== kernel: patch native-arm-pan.patch
+== kernel: patch native-dt-panic-region.patch
+== kernel: patch native-lookup-trace.patch
+== kernel: patch native-priv-work-interval.patch
+== kernel: patch native-quiet-managed-page-report.patch
+== kernel: patch native-text-fixup.patch
+== kernel: patch native-trust-cache-runtime.patch
+== kernel: patch native-union-getattrlistbulk.patch
+== kernel: patch native-union-lower-directory.patch
+== kernel: patch native-work-interval-soft-fail.patch
+== kernel: patch native-work-interval-trace.patch
+== kernel: patch native-work-interval-instance.patch
+== kernel: patch non-apple-cache-monitor.patch
+== kernel: patch non-apple-iommu-bootstrap.patch
+== kernel: patch non-apple-pmap-field.patch
+== kernel: patch null-root-media.patch
+== kernel: patch offline-component-load-probes.patch
+== kernel: patch offline-legacy-start.patch
+== kernel: patch offline-native-gpu-broker.patch
+== kernel: patch offline-owner-boot-manifest.patch
+== kernel: patch offline-owner-cache-carrier.patch
+== kernel: patch offline-owner-root-binding-audit.patch
+== kernel: patch offline-owner-root-crypto-probe.patch
+== kernel: patch offline-owner-systemos-mount.patch
+== kernel: patch offline-owner-z-air-init.patch
+== kernel: patch offline-pgz-alignment-probe.patch
+== kernel: patch pgz-aligned-validation.patch
+== kernel: patch public-entitlements-header.patch
+== kernel: patch published-freezer-condition.patch
+== kernel: patch source-corecrypto14-bootstrap.patch
+== kernel: patch source-machine-layer.patch
+== kernel: patch source-pthread-bootstrap.patch
+== kernel: patch zzw-native-adreno-sandbox-grant.patch
+== kernel: patch zzwb-native-sandbox-grant-set-properties.patch
+== kernel: patch zzx-pmap-sync-64bit-pa.patch
+== kernel: patch zzy-native-gpu-addon-mount.patch
+== kernel: patch zzy-staged-system-apps.patch
+== kernel: patch zzyb-native-cryptex-os-view.patch
+== kernel: patch zzyc-owner-skip-launch-constraints.patch
+== kernel: patch xnu-10063.141.1-security-init.patch
+== kernel: patch xnu-10063.141.1-sparse-index.patch
+== kernel: patch kirby-ufs.patch
+== kernel: patch 0001-qcom-usb-debug-console.patch
+== kernel: patch 0002-qcom-usb-debug-worker.patch
+== kernel: patch 0003-vcputc-no-cursor.patch
+unixnu: XNU patch /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU-tb321fu/patches/xnu/0003-vcputc-no-cursor.patch: git failed (128): error: patch fragment without header at /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU-tb321fu/patches/xnu/0003-vcputc-no-cursor.patch:3: @@ -1233,9 +1233,19 @@
