@@ -1,3 +1,46 @@
-run 42575645227 commit 62993859c014a3145e174c2c31c39a1ced3dd402
-started 2026-11-09T06:51:42Z
-runner macos26
+commit 62993859c014a3145e174c2c31c39a1ced3dd402
+job kernel
+started at 2026-11-09T06:53:32Z
+--- out/ ---
+no kernel directory
+--- build log tail ---
+== kernel: patch native-trust-cache-runtime.patch
+== kernel: patch native-union-getattrlistbulk.patch
+== kernel: patch native-union-lower-directory.patch
+== kernel: patch native-work-interval-soft-fail.patch
+== kernel: patch native-work-interval-trace.patch
+== kernel: patch native-work-interval-instance.patch
+== kernel: patch non-apple-cache-monitor.patch
+== kernel: patch non-apple-iommu-bootstrap.patch
+== kernel: patch non-apple-pmap-field.patch
+== kernel: patch null-root-media.patch
+== kernel: patch offline-component-load-probes.patch
+== kernel: patch offline-legacy-start.patch
+== kernel: patch offline-native-gpu-broker.patch
+== kernel: patch offline-owner-boot-manifest.patch
+== kernel: patch offline-owner-cache-carrier.patch
+== kernel: patch offline-owner-root-binding-audit.patch
+== kernel: patch offline-owner-root-crypto-probe.patch
+== kernel: patch offline-owner-systemos-mount.patch
+== kernel: patch offline-owner-z-air-init.patch
+== kernel: patch offline-pgz-alignment-probe.patch
+== kernel: patch pgz-aligned-validation.patch
+== kernel: patch public-entitlements-header.patch
+== kernel: patch published-freezer-condition.patch
+== kernel: patch source-corecrypto14-bootstrap.patch
+== kernel: patch source-machine-layer.patch
+== kernel: patch source-pthread-bootstrap.patch
+== kernel: patch zzw-native-adreno-sandbox-grant.patch
+== kernel: patch zzwb-native-sandbox-grant-set-properties.patch
+== kernel: patch zzx-pmap-sync-64bit-pa.patch
+== kernel: patch zzy-native-gpu-addon-mount.patch
+== kernel: patch zzy-staged-system-apps.patch
+== kernel: patch zzyb-native-cryptex-os-view.patch
+== kernel: patch zzyc-owner-skip-launch-constraints.patch
+== kernel: patch xnu-10063.141.1-security-init.patch
+== kernel: patch xnu-10063.141.1-sparse-index.patch
+== kernel: patch kirby-ufs.patch
+== kernel: patch 0001-qcom-usb-debug-console.patch
+== kernel: patch 0002-qcom-usb-debug-worker.patch
+== kernel: patch 0003-vcputc-no-cursor.patch
+unixnu: XNU patch /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU-tb321fu/patches/xnu/0003-vcputc-no-cursor.patch: git failed (128): error: patch fragment without header at /Users/runner/work/uefi-kirby/uefi-kirby/devices/UniXNU-tb321fu/patches/xnu/0003-vcputc-no-cursor.patch:3: @@ -1233,9 +1233,19 @@
