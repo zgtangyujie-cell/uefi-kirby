@@ -153,7 +153,7 @@ initrd = "Payloads/restore_apfs.img"
 # DB_HALT (0x1) is not set, so nothing stops at boot.  Only 0x8 is used here: the
 # other bits in 0x14e are obsolete or unrelated (DB_NMI, DB_ARP), and there is no
 # reason to switch them on.
-# --- round D: the console is created before the KPRINTF chain (15a315b) -------
+# --- round D/E: where the video console is created (15a315b, f1bdd8f) --------
 #
 # Rounds A-C narrowed the death to arm_init.c:536..577 and cleared the module:
 # with qcom-usb-debug=0 (no GCC, no DWC3, no SMMU, no MMIO at all) the board
@@ -176,5 +176,13 @@ initrd = "Payloads/restore_apfs.img"
 #       check qcom_usb_debug_init() refused at
 #   nothing at all -> ml_io_map or the mobile display provider, and only then
 #       is the display backend itself suspect
+#
+# Round E (f1bdd8f) corrects where that call sits: AFTER the KPRINTF chain, not
+# before it.  PE_init_kprintf (STARTUP(KPRINTF, STARTUP_RANK_FIRST)) is what
+# assigns PE_kputc, and PE_init_kprintf_config (a TUNABLES hook) is what clears
+# disable_serial_output.  Round D put PE_create_console() before both, so
+# vc_init() did clear the panel -- measured: black between the 47 s photograph
+# and the 78.1 s reset -- while initialize_screen()'s own `b=...` line had no
+# sink and the first kprintf never appeared.
 args = "-v debug=0x8 offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1"
 enabled = true
