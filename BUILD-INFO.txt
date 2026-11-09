@@ -1,0 +1,43 @@
+commit 4f0f4f7a5315a8efa45c120509ba2d5ed0dd8971
+target DEBUG
+--- build.sh tail ---
+INFO - 
+INFO - - Done -
+INFO - Build end time: 13:11:23, Nov.09 2026
+INFO - Build total time: 00:00:23
+INFO - 
+INFO - ------------------------------------------------
+INFO - --------------Cmd Output Finished---------------
+INFO - --------- Running Time (mm:ss): 00:23 ----------
+INFO - ----------- Return Code: 0x00000000 ------------
+INFO - ------------------------------------------------
+PROGRESS - Running Post Build
+INFO - ---------------------------------------------------------
+INFO - -----------Postbuild Image Validation Starting-----------
+INFO - ---------------------------------------------------------
+INFO - PE_VALIDATION_PATH not set, Using default configuration
+INFO - Review ImageValidation/Readme.md for configuration options.
+INFO - ---------------------------------------------------------
+INFO - -----------Postbuild Image Validation Finished-----------
+INFO - ------------------0055 Images Verified-------------------
+INFO - -------------- Running Time (mm:ss): 00:00 --------------
+INFO - ---------------------------------------------------------
+CRITICAL - Copying Symbols to flat directory
+INFO - Writing BuildToolsReports to /home/runner/work/_temp/work/uefi/Build/kirbyPkg/DEBUG_CLANGPDB/BUILD_TOOLS_REPORT
+PROGRESS - End time: 2026-11-09 13:11:24.172142	 Total time Elapsed: 0:00:24
+SECTION - Log file is located at: /home/runner/work/_temp/work/uefi/Build/BUILDLOG_kirbyPkg.txt
+SECTION - Summary
+PROGRESS - Success
+kirby: appended 67108864 payload bytes after the FD
+
+=== Fat.efi (961578FE-B6B7-44C3-AF35-6BC705CD2B1F) in Guid.xref:
+961578FE-B6B7-44c3-AF35-6BC705CD2B1F Fat
+
+=== EnglishDxe in Guid.xref:
+CD3BAFB6-50FB-4fe8-8E4E-AB74D2C1A600 EnglishDxe
+
+=== result
+-rw-r--r-- 1 runner runner 9232384 Nov  9 13:11 Mu-kirby-0.img
+74a16e3c6bcc9f4b5ed622afd5e47094fa53e5479841e63cd96c95003ab238e6  Mu-kirby-0.img
+
+flash with: fastboot boot Mu-kirby-0.img
