@@ -1,0 +1,31 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -533,6 +533,19 @@
+ 
+ 	/* Setup debugging output. */
+ 	const unsigned int serial_exists = serial_init();
++	/* (BRINGUP) The video console must exist before the KPRINTF startup chain,
++	 * not after it.  This call sat at line 577, i.e. after
++	 * kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF) and after the kprintf
++	 * at line 537, so every early line was emitted with no console registered
++	 * and the panel never showed a kernel character.  initialize_screen() is
++	 * itself the first thing that prints, which is why a blank panel proved
++	 * nothing about how far the kernel had got.  PE_state.video is already
++	 * populated by PE_init_platform() above and its v_baseAddr carries bit 0
++	 * from the boot loader, so initialize_screen() maps the framebuffer itself
++	 * with ml_io_map.  check_for_panic_log() returns early when the device tree
++	 * has no embedded-panic-log-size, so gPanicBase stays 0 and nothing is
++	 * zeroed. */
++	PE_create_console();
+ 	kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF);
+ 	kprintf("kprintf initialized\n");
+ 
+@@ -574,7 +587,7 @@
+ 		(void)switch_to_serial_console(); /* Switch into serial mode from video console */
+ 		disableConsoleOutput = FALSE;     /* Allow printfs to happen */
+ 	}
+-	PE_create_console();
++	/* PE_create_console(); -- moved above kernel_startup_initialize_upto() */
+ 
+ 	/* setup console output */
+ 	PE_init_printf(FALSE);

@@ -11,4 +11,10 @@ kirby-ufs.patch
 # 0002 = bsd_init.c worker thread behind qcom-usb-debug=1.
 0001-qcom-usb-debug-console.patch
 0002-qcom-usb-debug-worker.patch
+# 0003 = arm_init: call PE_create_console() before
+#        kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF).  It used to
+#        run at line 577, i.e. after the KPRINTF chain and after the
+#        kprintf at line 537, so nothing the kernel printed could ever
+#        reach the panel and initialize_screen() itself never ran.
+0003-early-console.patch
 # kPEAcquireScreen keeps the text console enabled. Without it a graphics boot
