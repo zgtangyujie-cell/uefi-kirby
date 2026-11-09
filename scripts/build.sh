@@ -199,17 +199,19 @@ if git -C "$ROOT" fetch -q --depth 1 origin kernel-out 2>/dev/null; then
     python3 "$ROOT/scripts/patch-pe-console.py" "$KERNEL_TMP" ||
       { log "PE_create_console patch failed; refusing to ship an unpatched kernel"; exit 1; }
     #
-    # XNU's own console: point _printf at scripts/xnu-console.c so every kernel
-    # message is drawn on the panel instead of going to a serial port that does
-    # not exist here.  Taken from UniXNU-caihong, which is the same SoC family.
+    # Preserve the native printf/kprintf paths by default: the kernel's
+    # QcomXnuUsbDebug console patch tees formatted bytes to the USB backlog.
+    # Redirecting these function entries to xnu-console.c bypasses those hooks
+    # and makes USB log coverage impossible even if CDC initialization works.
+    # Keep the old framebuffer trampoline as an explicit diagnostic opt-in,
+    # not a prerequisite for a USB logging image.
     #
-    # MUST run before the entry probe: xnu-console.c checks the entry sequence
-    # of _printf, and the probe rewrites call sites.  It also scans for padding
-    # backwards from the end of the segment, so it will not claim the cave the
-    # probe keeps for its stage code.
-    #
-    python3 "$ROOT/scripts/patch-xnu-console.py" "$KERNEL_TMP" ||
-      { log "xnu-console patch failed; refusing to ship a kernel with no console"; exit 1; }
+    if [ "${KIRBY_FB_CONSOLE:-0}" = "1" ]; then
+      python3 "$ROOT/scripts/patch-xnu-console.py" "$KERNEL_TMP" ||
+        { log "xnu-console patch failed"; exit 1; }
+    else
+      log "USB log mode: native printf/kprintf/processor_idle preserved; framebuffer trampolines disabled"
+    fi
     #
     # Official entry probe: stage code goes into the zero padding after `_start`
     # (which is a single `b`), displaced instructions are re-executed there.
