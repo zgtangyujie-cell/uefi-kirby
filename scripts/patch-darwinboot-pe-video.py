@@ -102,6 +102,7 @@ FINDER = '''
 STATIC BOOLEAN  mKirbyPeVideoSeeded = FALSE;
 STATIC UINT64   mKirbyPeVideoState  = 0;
 STATIC UINT64   *mKirbyPeVideoPv    = NULL;
+STATIC UINT64   mKirbyPeVideoArgs   = 0;   /* boot_args->Video base, 0 = not written */
 
 //
 // KirbyPeVideo: resolve a symbol from the kernel's LC_SYMTAB.
@@ -211,6 +212,40 @@ SEED = '''  //
         mKirbyPeVideoSeeded = TRUE;
       }
     }
+    //
+    // KirbyPeVideo: ALSO write boot_args->Video, because the block above is
+    // discarded.  pe_init.c:413-430 (PE_init_platform) copies boot_args->Video
+    // over PE_state.video, and arm_init.c:371 calls PE_init_platform with the
+    // real boot_args long before PE_create_console at :577.  So boot_args is the
+    // SOURCE and PE_state.video is the derived copy: writing only PE_state is a
+    // no-op by the time _initialize_screen reads it.
+    //
+    // Boot_Video is six u64 at boot_args+0x28 (DarwinBoot's BootArgs.h asserts
+    // OFFSET_OF (DARWIN_BOOT_ARGS, Video) == 0x28), and Boot_Video's member order
+    // is v_baseAddr, v_display, v_rowBytes, v_width, v_height, v_depth.  So the
+    // second word -- boot_args+0x30 -- is v_display, and 0 selects kPETextMode.
+    //
+    // This is not cosmetic.  v_display decides the op that _PE_create_console's
+    // `cinc w1, w20, eq` computes, and that op is recorded in gc_graphics_boot:
+    //   op == 1 (graphics) -> gc_graphics_boot TRUE  -> startup.c:716 sees
+    //        graphics_now TRUE -> gc_enable(FALSE) -> gc_enabled stays FALSE
+    //        -> vcputc_options refuses every character, forever.
+    //   op == 2 (text)     -> gc_graphics_boot FALSE -> graphics_now FALSE
+    //        -> gc_enable(TRUE) -> gc_enabled TRUE -> the console can paint.
+    // DarwinBootVideoFromGop writes the literal 1 into Video[1] (BootVideo.h:31),
+    // which is this slot, so without this write v_display is always 1.
+    //
+    if ((ArgsAddress != 0) && (ArgsAddress >= Kernel.Base)) {
+      UINT64  *Bv = (UINT64 *)(UINTN)(ArgsAddress + 0x28);
+
+      Bv[0] = Video[0] | 1ULL;   // v_baseAddr  - bit0: physical-address marker
+      Bv[1] = 0;                 // v_display   - 0 -> kPETextMode
+      Bv[2] = Video[2];          // v_rowBytes
+      Bv[3] = Video[3];          // v_width
+      Bv[4] = Video[4];          // v_height
+      Bv[5] = Video[5];          // v_depth     - packed depth|rotate|scale
+      mKirbyPeVideoArgs = (UINT64)(UINTN)Bv;
+    }
   }
 '''
 
@@ -242,6 +277,25 @@ REPORT = '''  //
                    mKirbyPeVideoPv[0], mKirbyPeVideoPv[1], mKirbyPeVideoPv[2],
                    mKirbyPeVideoPv[3], mKirbyPeVideoPv[4]);
     DiagDraw (KirbyReportText, 27);
+    //
+    // boot_args->Video is the copy PE_init_platform actually propagates, so
+    // report Bv[1] (v_display) explicitly: 0 there is what opens gate two.
+    // Row 28 sits at y 2208..2264, still under the boot menu at ~2245.
+    //
+    if (mKirbyPeVideoArgs != 0) {
+      UINT64  *Bv = (UINT64 *)(UINTN)mKirbyPeVideoArgs;
+
+      Print (L"seed: boot_args.Video <- pa %lx base %lx display %lx row %lx\\n",
+             mKirbyPeVideoArgs, Bv[0], Bv[1], Bv[2]);
+      UnicodeSPrint (KirbyReportText, sizeof (KirbyReportText),
+                     L"bargs %lx disp %lx base %lx",
+                     mKirbyPeVideoArgs, Bv[1], Bv[0]);
+      DiagDraw (KirbyReportText, 28);
+    } else {
+      UnicodeSPrint (KirbyReportText, sizeof (KirbyReportText),
+                     L"bargs NOT WRITTEN");
+      DiagDraw (KirbyReportText, 28);
+    }
   } else {
     CHAR16  KirbyReportText[96];
 

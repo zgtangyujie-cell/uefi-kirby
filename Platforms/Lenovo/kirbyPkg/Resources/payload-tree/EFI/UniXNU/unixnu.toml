@@ -184,5 +184,16 @@ initrd = "Payloads/restore_apfs.img"
 # vc_init() did clear the panel -- measured: black between the 47 s photograph
 # and the 78.1 s reset -- while initialize_screen()'s own `b=...` line had no
 # sink and the first kprintf never appeared.
-args = "-v debug=0x8 offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1"
+#
+# startup_debug=1 is the second half of the kprintf pair.  debug=0x8 opens the
+# SINK (pe_kprintf.c:41 clears disable_serial_output); startup_debug=1 makes the
+# startup machinery GENERATE text:
+#   startup.c:225   kernel_bootstrap_log -> kprintf("kernel_bootstrap: %s")
+#                   requires startup_debug & STARTUP_DEBUG_VERBOSE (0x1)
+#   startup.c:405   kprintf("%s[%d, rank %d]: %p(%p)") for EVERY startup entry
+#   startup.c:417   kprintf("... reached phase %d") per subsystem
+# With only debug=0x8 the sink exists and nothing is printed; with only
+# startup_debug=1 the text is generated and thrown away through os_log.  Both
+# are required.  STARTUP_DEBUG_VERBOSE == 0x1 (startup.h:96), so the value is 1.
+args = "-v debug=0x8 startup_debug=1 offline-mobile-graphics-load=1 offline-mobile-graphics-client=1 -enable_kprintf_spam qcom-usb-debug=1"
 enabled = true
