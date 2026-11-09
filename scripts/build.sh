@@ -608,22 +608,37 @@ fi
 # at.  Both must be seeded, from DarwinBoot, before ExitBootServices:
 #   PA = Address + (0xFFFFFFF007B20E00 - Kernel.Base)   (and ...B20E04)
 #
+# DISABLED 2026-11-09 09:0x: the seed address is not stable across builds, and
+# the console has a real root cause that a BSS poke cannot fix.
+#
+# What the 4f4e91c kernel actually contains (disassembled from
+# _k_4f4e91c.macho, symbol _vcputc_options @ 0xFFFFFFF0073BE760):
+#
+#   0xFFFFFFF0073BE780  adrp x8,  #0xfffffff007b34000
+#   0xFFFFFFF0073BE784  ldrb w8,  [x8, #0xe00]     <- gate at 0xFFFFFFF007B34E00
+#   0xFFFFFFF0073BE78C  ldr  w9,  [x19, #0xe04]    <- gate at 0xFFFFFFF007B34E04
+#
+# so the gates live at ...B34E00 in this build, while the seed wrote
+# ...B20E00 -- off by 0x14000.  The offset tracks the kernel build (the payload
+# is appended to a kernel segment, which moves __bss), so a hardcoded address is
+# wrong by construction the moment anything else changes.
+#
+# More importantly, the poke was never the right fix.  osfmk/kern/startup.c:716
+# calls initialize_screen (NULL, kPEAcquireScreen).  Inside, gc_initialize() --
+# the function that runs VCPUTC_LOCK_INIT() and sets gc_initialized -- sits in
+# the `if (boot_vinfo)` block, so a NULL argument skips it entirely and
+# gc_initialized stays FALSE forever.  Then graphics_now evaluates TRUE
+# (gc_graphics_boot && !gc_desire_text) and kPEAcquireScreen runs
+# gc_enable (FALSE), which sets gc_enabled = FALSE and disableConsoleOutput.
+# Both gates are therefore shut by design, not by an accident of initialisation.
+#
+# Filling PE_state.video to reach the real path was already measured and made
+# things worse -- see the KirbyPeVideo note above: with the seed the kernel died
+# BEFORE the console call site.  So this comment stays as the record and the
+# write is gone; the USB console is the channel that does not need the panel.
+#
 if [ -f "$DARWINBOOT_C" ]; then
-  python3 -c '
-import sys
-from pathlib import Path
-p = Path(sys.argv[1])
-t = p.read_text()
-if "0xFFFFFFF007B20E00ULL" in t:
-    sys.exit(0)
-needle = "DiagDraw (KirbyDiag, 6); }"
-if needle not in t:
-    sys.exit("KirbyDiag paint block not found in DarwinBoot.c")
-gate = "\n  /* kirby: open the vcputc gates -- BOTH, verified 2026-11-08 */\n  /* gc_initialized @ 0xB20E00: cmp w8,#1 must hold */\n  *(volatile UINT32 *)(UINTN)(Address + (0xFFFFFFF007B20E00ULL - Kernel.Base)) = 1;\n  /* gc_enabled @ 0xB20E04: ccmp w9,#0 must not be equal */\n  *(volatile UINT32 *)(UINTN)(Address + (0xFFFFFFF007B20E04ULL - Kernel.Base)) = 1;"
-t = t.replace(needle, needle + gate, 1)
-p.write_text(t)
-print("DarwinBoot: opens the vcputc gates at b20e00 + b20e04")
-' "$DARWINBOOT_C" || { log "DarwinBoot vcputc gate patch failed"; exit 1; }
+  log "seed: vcputc gate poke retired -- gates are at ...B34E00 this build, not ...B20E00"
 fi
 
 #
